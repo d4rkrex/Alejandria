@@ -1,12 +1,14 @@
 change: http-sse-transport
-phase: review
+phase: tasks
 status: complete
 created: 2026-04-05T20:30:46.818Z
-updated: 2026-04-05T20:39:53.377Z
+updated: 2026-04-05T20:53:04.007Z
 phases_completed:
   - proposal
   - spec
   - review
+  - design
+  - tasks
 history:
   - phase: proposal
     status: complete
@@ -14,5 +16,9 @@ history:
   - phase: spec
     status: complete
     timestamp: 2026-04-05T20:33:19.379Z
-review_hash: sha256:cd4d69b30a6b570730a99e47279a99aee56a20d957328e0192520f5c0c58727b
-review_posture: elevated
+  - phase: review
+    status: complete
+    timestamp: 2026-04-05T20:39:53.377Z
+  - phase: design
+    status: complete
+    timestamp: 2026-04-05T20:52:27.892Z
