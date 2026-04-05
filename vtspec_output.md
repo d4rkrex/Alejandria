@@ -274,3 +274,117 @@ vtspec_tasks --change http-sse-transport
 **Branch**: feat/sse-transport  
 **Change**: http-sse-transport  
 **Security Posture**: ELEVATED
+
+---
+
+## 🎨 Design Phase Complete (2026-04-05)
+
+### Architecture Decisions (9)
+
+1. **Transport Abstraction via Trait** - Zero-cost for stdio builds
+2. **Single Feature Flag** (`http-transport`) - Minimal binary bloat
+3. **SSE with Broadcast Channels** - Per-connection isolation
+4. **Instance Identity Binding** - Multi-tenant security
+5. **Layered Connection Throttling** - DoS prevention
+6. **SQLCipher + Permissions + Systemd** - Defense-in-depth
+7. **Ephemeral Session Tokens** - Session hijacking prevention
+8. **Constant-Time Key Comparison** - Timing attack prevention
+9. **HMAC-Signed Audit Logs** - Non-repudiation
+
+### CRITICAL Blockers Resolved
+
+| ID | Blocker | Resolution |
+|----|---------|------------|
+| **EOP-001** | Cross-Instance Data Access | Instance ID binding + API key registry |
+| **DOS-001** | SSE Connection Exhaustion | 3-tier limits (10/50/1000) + keepalive |
+| **ID-001** | Database File Leakage | SQLCipher + chmod 600 + DynamicUser |
+| **S-003** | SSE Session Hijacking | Ephemeral tokens + 30min TTL |
+
+---
+
+## ✅ Tasks Generated (39 Total)
+
+### Breakdown
+
+- **Abuse Case Mitigations**: 8 tasks (AC-001 → AC-008)
+- **Security Findings**: 21 tasks (S-001, T-001, R-001, ID-001, DOS-001, EOP-001, etc.)
+- **Implementation Tasks**: 10 tasks (core functionality)
+
+### Priority Distribution
+
+| Priority | Count | Examples |
+|----------|-------|----------|
+| 🔴 CRITICAL | 4 | Instance binding, connection limits, DB encryption, session tokens |
+| 🟠 HIGH | 7 | Constant-time comparison, JSON validation, audit logging |
+| 🟡 MEDIUM | 9 | Header validation, env var cleanup, error sanitization |
+| 🟢 LOW | 1 | Feature flag bypass prevention |
+| ⚪ Standard | 18 | Core implementation tasks |
+
+### Key Tasks Preview
+
+```markdown
+✅ Phase 1: Transport Abstraction
+- [ ] Extract handle_request to transport-agnostic function
+- [ ] Define Transport trait with run() method
+- [ ] Refactor StdioTransport to use trait
+- [ ] Add feature flag to Cargo.toml
+
+✅ Phase 2: HTTP/SSE Implementation
+- [ ] Implement HttpSseTransport with axum
+- [ ] Add SSE endpoint with broadcast channels
+- [ ] Implement API key authentication middleware
+- [ ] Add connection limits (per-key, per-IP, global)
+- [ ] Generate ephemeral session tokens
+- [ ] Implement constant-time key comparison
+
+✅ Phase 3: Security Hardening
+- [ ] Add SQLCipher database encryption
+- [ ] Implement instance identity binding
+- [ ] Add HMAC-signed audit logging
+- [ ] Configure file permissions (chmod 600)
+- [ ] Add systemd DynamicUser isolation
+- [ ] Implement request validation & sanitization
+
+✅ Phase 4: Deployment Infrastructure
+- [ ] Create systemd template unit
+- [ ] Write Nginx reverse proxy config
+- [ ] Add health check endpoint
+- [ ] Create deployment automation scripts
+```
+
+---
+
+## 📊 Final Status
+
+```
+✅ Git repository initialized
+✅ v1.0.0 tag created (baseline)
+✅ feat/sse-transport branch active
+✅ VT-Spec change http-sse-transport created
+✅ Proposal complete
+✅ Spec complete (10 reqs, 55 scenarios)
+✅ Security review complete (21 findings, 8 abuse cases)
+✅ Design complete (9 decisions, 4 CRITICAL blockers resolved)
+✅ Tasks complete (39 implementation tasks with security mitigations)
+⏳ Implementation ready to start
+```
+
+---
+
+## 🚀 Ready for Implementation
+
+**Branch**: `feat/sse-transport`  
+**Tasks**: 39 tasks in `.vtspec/changes/http-sse-transport/tasks.md`  
+**Timeline**: ~4 weeks (18 days dev + 5 days testing + 3 days docs)
+
+**Next Steps**:
+1. Start implementing tasks in order (Phase 1 → Phase 2 → Phase 3 → Phase 4)
+2. Run tests after each phase
+3. Security review checkpoint after Phase 2
+4. Merge to main when all tasks complete + tests pass
+
+---
+
+**Generated**: 2026-04-05  
+**VT-Spec Version**: ELEVATED security posture  
+**All CRITICAL blockers**: RESOLVED in design
