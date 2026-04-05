@@ -1,0 +1,31 @@
+{
+  "name": "mem_update",
+  "description": "Update an existing memory by ID",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Memory ID (ULID format, required)"
+      },
+      "content": {
+        "type": "string",
+        "description": "New content"
+      },
+      "summary": {
+        "type": "string",
+        "description": "New summary"
+      },
+      "importance": {
+        "type": "string",
+        "enum": ["critical", "high", "medium", "low"],
+        "description": "New importance level"
+      },
+      "topic": {
+        "type": "string",
+        "description": "New topic"
+      }
+    },
+    "required": ["id"]
+  }
+}

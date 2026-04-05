@@ -1,0 +1,33 @@
+[package]
+name = "alejandria-mcp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Core dependencies
+alejandria-core = { path = "../alejandria-core" }
+alejandria-storage = { path = "../alejandria-storage" }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Time handling
+chrono = { workspace = true }
+
+# Logging (optional, for debugging)
+log = { version = "0.4", optional = true }
+
+[dev-dependencies]
+# Testing utilities
+tempfile = "3.12"
+
+[features]
+default = []
+logging = ["log"]

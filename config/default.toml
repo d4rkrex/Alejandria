@@ -1,0 +1,199 @@
+# Alejandria Configuration File
+# 
+# This file contains all configuration options for Alejandria.
+# Place this file at: ~/.config/alejandria/config.toml
+#
+# Configuration priority (highest to lowest):
+#   1. Environment variables (ALEJANDRIA_*)
+#   2. This config file
+#   3. Built-in defaults
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+
+# Path to the SQLite database file
+# Supports ~ expansion for home directory
+# Default: "~/.local/share/alejandria/alejandria.db"
+# Environment override: ALEJANDRIA_DB_PATH
+db_path = "~/.local/share/alejandria/alejandria.db"
+
+# =============================================================================
+# Search Configuration
+# =============================================================================
+[search]
+
+# Default maximum number of results to return from search operations
+# This affects mem_recall and memoir_search operations
+# Default: 10
+# Environment override: ALEJANDRIA_SEARCH_LIMIT
+limit = 10
+
+# Minimum similarity score threshold for search results (0.0-1.0)
+# Results below this score will be filtered out
+# - 0.0: Include all results
+# - 0.3: Moderate relevance (recommended default)
+# - 0.5: High relevance
+# - 0.7: Very high relevance
+# Default: 0.3
+# Environment override: ALEJANDRIA_SEARCH_MIN_SCORE
+min_score = 0.3
+
+# =============================================================================
+# Temporal Decay Configuration
+# =============================================================================
+[decay]
+
+# Enable automatic decay application before search operations
+# When true, memories are decayed based on time elapsed since last access
+# This ensures search results reflect current relevance, not just initial importance
+# Default: true
+# Environment override: ALEJANDRIA_DECAY_AUTO_DECAY
+auto_decay = true
+
+# Weight threshold below which memories are pruned (0.0-1.0)
+# Memories with weight below this threshold will be permanently deleted
+# during prune operations
+# - 0.05: Very aggressive pruning (keep only highly relevant memories)
+# - 0.1: Aggressive pruning (recommended default)
+# - 0.2: Moderate pruning
+# - 0.3: Conservative pruning
+# Default: 0.1
+# Environment override: ALEJANDRIA_DECAY_PRUNE_THRESHOLD
+prune_threshold = 0.1
+
+# Decay rates by importance level (half-life in days)
+# These determine how quickly memories lose relevance over time
+# The decay formula is: weight_new = weight * 0.5^(days_elapsed / half_life)
+#
+# Default half-life values:
+# - critical: 365 days (1 year) - extremely important, slow decay
+# - high: 90 days (3 months) - important, moderate decay
+# - medium: 30 days (1 month) - normal importance, standard decay
+# - low: 7 days (1 week) - low importance, fast decay
+#
+# Note: These are currently hardcoded in the implementation
+# Future enhancement: make these configurable
+
+# =============================================================================
+# MCP (Model Context Protocol) Configuration
+# =============================================================================
+[mcp]
+
+# Use stdio transport for MCP server
+# When true, reads JSON-RPC from stdin and writes to stdout
+# Default: true
+stdio = true
+
+# Enable request/response logging for debugging
+# When true, logs all MCP requests and responses to stderr
+# Useful for troubleshooting but can be verbose
+# Default: false
+log_requests = false
+
+# =============================================================================
+# Embeddings Configuration (Future)
+# =============================================================================
+# [embeddings]
+# 
+# # Embedding provider (future enhancement)
+# # Options: "local", "openai", "custom"
+# # Default: "local"
+# provider = "local"
+# 
+# # Local embedding model path (if provider = "local")
+# # model_path = "~/.local/share/alejandria/models/all-MiniLM-L6-v2"
+# 
+# # OpenAI API key (if provider = "openai")
+# # api_key = "sk-..."
+# 
+# # Embedding dimensions (depends on model)
+# # Default: 384 (all-MiniLM-L6-v2)
+# dimensions = 384
+# 
+# # Batch size for embedding operations
+# # Default: 32
+# batch_size = 32
+
+# =============================================================================
+# Consolidation Configuration (Future)
+# =============================================================================
+# [consolidation]
+# 
+# # Minimum weight threshold for consolidation
+# # Only memories with weight >= this value are consolidated
+# # Default: 0.5
+# min_weight = 0.5
+# 
+# # Minimum number of memories required to trigger consolidation
+# # Topics with fewer memories won't be consolidated
+# # Default: 3
+# min_memories = 3
+# 
+# # Maximum number of memories to consolidate at once
+# # Prevents overwhelming the consolidation process
+# # Default: 100
+# max_memories = 100
+
+# =============================================================================
+# Logging Configuration (Future)
+# =============================================================================
+# [logging]
+# 
+# # Log level: trace, debug, info, warn, error
+# # Default: "info"
+# level = "info"
+# 
+# # Log file path (if empty, logs to stderr)
+# # file = "~/.local/share/alejandria/alejandria.log"
+# 
+# # Maximum log file size in MB before rotation
+# # Default: 10
+# max_size_mb = 10
+# 
+# # Number of rotated log files to keep
+# # Default: 3
+# max_backups = 3
+
+# =============================================================================
+# Performance Configuration (Future)
+# =============================================================================
+# [performance]
+# 
+# # SQLite cache size in KB
+# # Higher values improve performance but use more memory
+# # Default: 2000 (2MB)
+# cache_size_kb = 2000
+# 
+# # Enable SQLite Write-Ahead Logging (WAL) mode
+# # Improves concurrent access and write performance
+# # Default: true
+# wal_mode = true
+# 
+# # SQLite busy timeout in milliseconds
+# # How long to wait for locked database before failing
+# # Default: 5000 (5 seconds)
+# busy_timeout_ms = 5000
+# 
+# # Vector search HNSW parameters (future)
+# # hnsw_m = 16  # Number of connections per layer
+# # hnsw_ef_construction = 200  # Construction-time search depth
+# # hnsw_ef_search = 50  # Search-time depth
+
+# =============================================================================
+# Environment Variable Reference
+# =============================================================================
+# 
+# All settings can be overridden with environment variables:
+# 
+# ALEJANDRIA_DB_PATH                    - Database file path
+# ALEJANDRIA_SEARCH_LIMIT               - Default search result limit
+# ALEJANDRIA_SEARCH_MIN_SCORE           - Minimum similarity score
+# ALEJANDRIA_DECAY_AUTO_DECAY           - Enable auto-decay (true/false)
+# ALEJANDRIA_DECAY_PRUNE_THRESHOLD      - Prune threshold weight
+# 
+# Example:
+#   export ALEJANDRIA_DB_PATH="/var/lib/alejandria/db.sqlite"
+#   export ALEJANDRIA_SEARCH_LIMIT=20
+#   export ALEJANDRIA_SEARCH_MIN_SCORE=0.5
+#   alejandria recall "search query"

@@ -1,0 +1,40 @@
+{
+  "name": "mem_store",
+  "description": "Store a new memory or update existing via topic_key upsert",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "content": {
+        "type": "string",
+        "description": "Memory content (required)"
+      },
+      "summary": {
+        "type": "string",
+        "description": "Brief summary of the memory"
+      },
+      "importance": {
+        "type": "string",
+        "enum": ["critical", "high", "medium", "low"],
+        "description": "Importance level affecting decay rate"
+      },
+      "topic": {
+        "type": "string",
+        "description": "Topic for organization"
+      },
+      "topic_key": {
+        "type": "string",
+        "description": "Unique key for upsert workflow"
+      },
+      "source": {
+        "type": "string",
+        "description": "Source of the memory"
+      },
+      "related_ids": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Related memory IDs"
+      }
+    },
+    "required": ["content"]
+  }
+}

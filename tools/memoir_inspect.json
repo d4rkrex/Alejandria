@@ -1,0 +1,23 @@
+{
+  "name": "memoir_inspect",
+  "description": "Inspect concept neighborhood using BFS traversal",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "memoir": {
+        "type": "string",
+        "description": "Memoir name (required)"
+      },
+      "concept": {
+        "type": "string",
+        "description": "Concept name (required)"
+      },
+      "depth": {
+        "type": "integer",
+        "description": "Traversal depth (default: 1)",
+        "default": 1
+      }
+    },
+    "required": ["memoir", "concept"]
+  }
+}

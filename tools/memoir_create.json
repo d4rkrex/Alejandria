@@ -1,0 +1,18 @@
+{
+  "name": "memoir_create",
+  "description": "Create a new memoir (knowledge graph)",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Memoir name (unique, required)"
+      },
+      "description": {
+        "type": "string",
+        "description": "Memoir description"
+      }
+    },
+    "required": ["name"]
+  }
+}

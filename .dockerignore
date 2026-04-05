@@ -1,0 +1,51 @@
+# Build artifacts
+target/
+*.db
+*.db-shm
+*.db-wal
+
+# Git metadata
+.git/
+.gitignore
+.github/
+
+# Development files
+.env
+.env.local
+*.local
+
+# IDE artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (not needed in image)
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Test artifacts
+tests/fixtures/
+*.profdata
+*.profraw
+
+# MacOS artifacts
+.DS_Store
+
+# ATL directory
+.atl/
+
+# Inspirations
+inspirations/
+
+# Tools
+tools/
+
+# Config samples
+config/

@@ -1,0 +1,25 @@
+{
+  "name": "mem_list_topics",
+  "description": "List all topics with counts and statistics",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of topics (default: 100)",
+        "default": 100
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Offset for pagination (default: 0)",
+        "default": 0
+      },
+      "min_count": {
+        "type": "integer",
+        "description": "Minimum memory count (default: 1)",
+        "default": 1
+      }
+    },
+    "required": []
+  }
+}

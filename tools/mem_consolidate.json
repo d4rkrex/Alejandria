@@ -1,0 +1,24 @@
+{
+  "name": "mem_consolidate",
+  "description": "Consolidate memories in a topic into a high-level summary",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "topic": {
+        "type": "string",
+        "description": "Topic to consolidate (required)"
+      },
+      "min_weight": {
+        "type": "number",
+        "description": "Minimum weight threshold (default: 0.5)",
+        "default": 0.5
+      },
+      "min_memories": {
+        "type": "integer",
+        "description": "Minimum number of memories required (default: 3)",
+        "default": 3
+      }
+    },
+    "required": ["topic"]
+  }
+}

@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/alejandria-core",
+    "crates/alejandria-storage",
+    "crates/alejandria-mcp",
+    "crates/alejandria-cli",
+]
+exclude = [
+    "examples/rust",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Alejandria Contributors"]
+license = "MIT"
+repository = "https://github.com/yourusername/alejandria"
+
+[workspace.dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+ulid = "1.1"
+thiserror = "1.0"
+
+# Storage dependencies
+rusqlite = { version = "0.34", features = ["bundled", "modern_sqlite"] }
+sqlite-vec = "0.1"
+
+# CLI dependencies
+clap = { version = "4.5", features = ["derive", "env"] }
+toml = "0.8"
+
+# Async (if needed later)
+tokio = { version = "1.40", features = ["full"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = false  # Keep symbols for profiling (changed from true)
+debug = 1      # Add line number info for profiling without full debug symbols
+
+# Coverage configuration for local development and CI
+# Tools: cargo-tarpaulin, IDE plugins (via LCOV)
+[workspace.metadata.coverage]
+minimum_coverage = 70  # Line coverage threshold percentage

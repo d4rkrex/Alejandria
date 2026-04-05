@@ -1,0 +1,14 @@
+{
+  "name": "memoir_show",
+  "description": "Get full memoir graph with all concepts and links",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Memoir name (required)"
+      }
+    },
+    "required": ["name"]
+  }
+}

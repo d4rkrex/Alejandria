@@ -1,0 +1,39 @@
+# Rust
+target/
+*.lock
+Cargo.lock
+
+# Coverage artifacts
+target/coverage/
+*.lcov
+cobertura.xml
+
+# Profiling artifacts
+target/profiling/
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+
+# Environment
+.env
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Embedded git repos (use submodules instead)
+inspirations/engram/
+inspirations/icm/
+
+# Build artifacts
+examples/python/__pycache__/
+examples/go/example_*

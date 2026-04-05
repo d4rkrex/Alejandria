@@ -1,0 +1,27 @@
+version: '3.8'
+
+# Development override - use bind mounts instead of named volumes
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  alejandria-mcp:
+    # Override volumes with bind mount for local development
+    # Maps ./local-data directory on host to /data in container
+    volumes:
+      - ./local-data:/data
+    
+    # Development environment variables
+    environment:
+      # Enable debug logging for development
+      - RUST_LOG=debug
+      - RUST_BACKTRACE=1
+
+  alejandria-cli:
+    # Use the same bind mount for CLI service
+    volumes:
+      - ./local-data:/data
+    
+    # Development environment variables
+    environment:
+      - RUST_LOG=debug
+      - RUST_BACKTRACE=1

@@ -1,0 +1,20 @@
+{
+  "name": "mem_embed_all",
+  "description": "Batch embed existing memories that lack embeddings",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "batch_size": {
+        "type": "integer",
+        "description": "Batch size for processing (default: 100)",
+        "default": 100
+      },
+      "skip_existing": {
+        "type": "boolean",
+        "description": "Skip memories that already have embeddings (default: true)",
+        "default": true
+      }
+    },
+    "required": []
+  }
+}

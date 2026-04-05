@@ -1,0 +1,23 @@
+[package]
+name = "alejandria-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ulid = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+
+# Embeddings support (feature-gated)
+fastembed = { version = "4", optional = true }
+directories = { version = "5", optional = true }
+
+[features]
+default = ["embeddings"]
+embeddings = ["dep:fastembed", "dep:directories"]

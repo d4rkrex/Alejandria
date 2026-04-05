@@ -1,0 +1,32 @@
+{
+  "name": "memoir_link",
+  "description": "Create typed link between two concepts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "memoir": {
+        "type": "string",
+        "description": "Memoir name (required)"
+      },
+      "source": {
+        "type": "string",
+        "description": "Source concept name (required)"
+      },
+      "target": {
+        "type": "string",
+        "description": "Target concept name (required)"
+      },
+      "relation": {
+        "type": "string",
+        "enum": ["IsA", "HasProperty", "RelatedTo", "Causes", "PrerequisiteOf", "ExampleOf", "Contradicts", "SimilarTo", "PartOf"],
+        "description": "Relation type (required)"
+      },
+      "weight": {
+        "type": "number",
+        "description": "Link weight (default: 1.0)",
+        "default": 1.0
+      }
+    },
+    "required": ["memoir", "source", "target", "relation"]
+  }
+}

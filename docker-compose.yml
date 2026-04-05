@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # MCP Server Service - Long-running memory service with persistent storage
+  alejandria-mcp:
+    image: alejandria-mcp:latest
+    container_name: alejandria-mcp
+    
+    # Start the MCP server using the serve subcommand
+    command: serve
+    
+    # Named volume for database persistence across container restarts
+    # The /data directory contains the SQLite database file
+    volumes:
+      - alejandria-data:/data
+    
+    # Restart policy: always restart unless explicitly stopped
+    # Ensures service recovery after crashes or system reboots
+    restart: unless-stopped
+    
+    # Health check: verify server is responsive by running stats command
+    # Tests database connectivity and command execution
+    healthcheck:
+      test: ["CMD", "alejandria", "stats", "--json"]
+      interval: 30s      # Check every 30 seconds
+      timeout: 5s        # Command must complete within 5 seconds
+      retries: 3         # Mark unhealthy after 3 consecutive failures
+      start_period: 10s  # Grace period for initial startup
+    
+    # Environment variables for runtime configuration
+    environment:
+      # Database path - points to the mounted volume
+      - ALEJANDRIA_DB_PATH=/data/alejandria.db
+      
+      # Search configuration - controls query behavior
+      - ALEJANDRIA_SEARCH_LIMIT=10
+      - ALEJANDRIA_SEARCH_MIN_SCORE=0.3
+      
+      # Temporal decay configuration - automatic memory aging
+      - ALEJANDRIA_DECAY_AUTO_DECAY=true
+      - ALEJANDRIA_DECAY_PRUNE_THRESHOLD=0.1
+
+  # CLI Service - One-off command execution using the same data volume
+  # Uses profile "cli" so it's not started by default with docker-compose up
+  alejandria-cli:
+    image: alejandria-cli:latest
+    
+    # Share the same data volume as MCP server
+    # Allows CLI commands to access persisted memories
+    volumes:
+      - alejandria-data:/data
+    
+    # Override database path to match MCP server location
+    environment:
+      - ALEJANDRIA_DB_PATH=/data/alejandria.db
+    
+    # Profile: only start with explicit --profile cli flag
+    # Usage: docker-compose run --rm cli recall "query"
+    profiles:
+      - cli
+
+# Named volumes - managed by Docker with automatic backups
+volumes:
+  alejandria-data:
+    driver: local
+    # Volume persists even when containers are removed
+    # Backup command: docker run --rm -v alejandria-data:/data -v $(pwd):/backup alpine tar czf /backup/alejandria-backup.tar.gz /data
+    # Restore command: docker run --rm -v alejandria-data:/data -v $(pwd):/backup alpine tar xzf /backup/alejandria-backup.tar.gz -C /

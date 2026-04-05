@@ -1,0 +1,124 @@
+# ==============================================================================
+# Alejandria CLI - Multi-Stage Docker Build
+# ==============================================================================
+# Architecture: 5-stage build optimized for fast rebuilds via cargo-chef
+# Base: Debian bookworm-slim (GNU libc) - Required for ONNX Runtime compatibility
+# Size: ~89MB (includes ONNX Runtime ML inference libraries for embeddings)
+#
+# Why Debian instead of Alpine?
+# - fastembed (embeddings) depends on ONNX Runtime
+# - ONNX Runtime pre-built binaries only support x86_64-unknown-linux-gnu (glibc)
+# - Alpine uses musl libc, which is incompatible with ONNX Runtime
+# - Building ONNX from source would add 2+ hours to build time
+#
+# Layer Caching Strategy (cargo-chef):
+# 1. chef:    Install cargo-chef tool (cached indefinitely)
+# 2. planner: Generate dependency recipe (cached until Cargo.toml changes)
+# 3. builder: Compile dependencies ONLY (cached until Cargo.lock changes)
+# 4. app:     Compile application code (invalidates on every source change)
+# 5. runtime: Minimal runtime image with just the binary
+#
+# This approach ensures:
+# - First build: ~6 minutes (full dependency compilation)
+# - Subsequent builds: <2 minutes (only app code recompiles)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Stage 1: Chef - Install cargo-chef for dependency caching
+# ------------------------------------------------------------------------------
+# Base: rust:slim = Debian bookworm + Rust toolchain (~1.5GB)
+FROM rust:slim AS chef
+
+# Install build dependencies required for Rust compilation
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    # pkg-config: Helper tool for compiling against installed libraries
+    libssl-dev \
+    # libssl-dev: OpenSSL headers (required by many Rust crates for TLS)
+    libsqlite3-dev \
+    # libsqlite3-dev: SQLite headers (rusqlite FFI bindings need this)
+    g++ \
+    # g++: C++ compiler (CRITICAL for ONNX Runtime linking - provides libstdc++)
+    # Without g++, build fails with: "rust-lld: error: unable to find library -lstdc++"
+    && rm -rf /var/lib/apt/lists/*
+    # Clean apt cache to reduce layer size
+
+# Install cargo-chef for smart dependency caching
+# cargo-chef generates a "recipe" file that captures dependency information
+# This allows Docker to cache the dependency compilation layer separately
+RUN cargo install cargo-chef --locked
+# --locked: Use exact versions from Cargo.lock for reproducible builds
+
+WORKDIR /app
+
+# ------------------------------------------------------------------------------
+# Stage 2: Planner - Generate dependency recipe
+# ------------------------------------------------------------------------------
+# This stage extracts dependency information into recipe.json
+# Layer is cached and only invalidates when Cargo.toml or Cargo.lock changes
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+# Output: recipe.json contains all dependency metadata
+
+# ------------------------------------------------------------------------------
+# Stage 3: Builder - Compile dependencies (heavily cached layer)
+# ------------------------------------------------------------------------------
+# This is the most time-consuming stage (~5 minutes) but highly cacheable
+# Rebuilds ONLY when dependencies change (Cargo.toml/Cargo.lock modifications)
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+
+# Compile ONLY dependencies (no application code)
+# This layer is reused across builds as long as dependencies don't change
+RUN cargo chef cook --release --recipe-path recipe.json
+# Compiles: rusqlite, fastembed, ort (ONNX Runtime), tokio, clap, etc.
+# Time: ~5 minutes on first build, 0 seconds when cached
+
+# ------------------------------------------------------------------------------
+# Stage 4: Application Build
+# ------------------------------------------------------------------------------
+# This stage compiles the actual application code
+# Invalidates on every source code change, but dependencies are cached
+COPY . .
+RUN cargo build --release --bin alejandria
+# Output: /app/target/release/alejandria binary (~30MB)
+# Time: ~30 seconds (only application crates: alejandria-{cli,core,storage,mcp})
+
+# ------------------------------------------------------------------------------
+# Stage 5: Runtime - Minimal production image
+# ------------------------------------------------------------------------------
+# Final image contains ONLY the binary and minimal runtime dependencies
+# Size: ~89MB (debian:bookworm-slim ~30MB + binary ~30MB + ONNX libs ~25MB)
+FROM debian:bookworm-slim AS runtime
+
+# Install minimal runtime dependencies (no build tools, no headers)
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    # ca-certificates: TLS root certificates for HTTPS connections
+    # Required if alejandria ever makes HTTPS requests (future-proofing)
+    libsqlite3-0 \
+    # libsqlite3-0: SQLite shared library (runtime only, no headers)
+    # Size: ~1.5MB - provides database functionality
+    && rm -rf /var/lib/apt/lists/*
+    # Clean package cache to minimize image size
+
+# Copy compiled binary from builder stage (multi-stage optimization)
+# This ensures the final image doesn't contain any build tools or intermediate artifacts
+COPY --from=builder /app/target/release/alejandria /usr/local/bin/alejandria
+
+# Configure default database path via environment variable
+# This ensures the CLI uses /data/alejandria.db by default
+# Users can override with: docker run -e ALEJANDRIA_DB_PATH=/custom/path ...
+ENV ALEJANDRIA_DB_PATH=/data/alejandria.db
+
+# Set alejandria as the container entrypoint
+# Entrypoint is fixed - user can only pass subcommands and flags
+ENTRYPOINT ["alejandria"]
+
+# Default command: show help
+# User can override with any alejandria subcommand:
+# - docker run --rm -v alejandria-data:/data alejandria-cli:latest store "memory" --topic test
+# - docker run --rm -v alejandria-data:/data alejandria-cli:latest recall "query" --limit 10
+# - docker run --rm -v alejandria-data:/data alejandria-cli:latest topics
+CMD ["--help"]

@@ -1,0 +1,35 @@
+{
+  "name": "alejandria-mcp-client-nodejs",
+  "version": "0.1.0",
+  "description": "Node.js/TypeScript client example for Alejandria MCP server",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "example:memory": "tsx src/exampleMemory.ts",
+    "example:memoir": "tsx src/exampleMemoir.ts",
+    "clean": "rm -rf dist node_modules"
+  },
+  "keywords": [
+    "mcp",
+    "client",
+    "typescript",
+    "alejandria",
+    "memory",
+    "knowledge-graph"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

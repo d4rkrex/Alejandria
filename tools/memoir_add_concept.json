@@ -1,0 +1,27 @@
+{
+  "name": "memoir_add_concept",
+  "description": "Add a concept to a memoir",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "memoir": {
+        "type": "string",
+        "description": "Memoir name (required)"
+      },
+      "name": {
+        "type": "string",
+        "description": "Concept name (required)"
+      },
+      "definition": {
+        "type": "string",
+        "description": "Concept definition"
+      },
+      "labels": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Labels for categorization"
+      }
+    },
+    "required": ["memoir", "name"]
+  }
+}

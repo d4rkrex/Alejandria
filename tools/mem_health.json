@@ -1,0 +1,9 @@
+{
+  "name": "mem_health",
+  "description": "Check system health (database, FTS, vector search, embeddings)",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}

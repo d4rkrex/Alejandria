@@ -1,0 +1,94 @@
+# Decay Profile Configuration for Alejandria
+#
+# This file defines the available decay strategies and their default parameters.
+# Each profile determines how memory weights decay over time based on access patterns.
+#
+# ## Profile Structure
+#
+# Each profile must include:
+# - strategy: The decay algorithm name (must match a DecayStrategy implementation)
+# - default_params: Default parameters for the strategy (JSON-compatible TOML table)
+#
+# ## Available Strategies
+#
+# 1. **exponential**: Simple exponential decay with half-life
+# 2. **spaced-repetition**: SM-2 algorithm with interval-based decay
+# 3. **importance-weighted**: CVSS-based decay with severity multipliers
+# 4. **context-sensitive**: Type-aware decay with different half-lives per observation type
+
+# Exponential Decay (Default)
+# 
+# Uses exponential decay with a configurable half-life period.
+# Formula: weight = e^(-ln(2) * days_since_access / half_life)
+#
+# Parameters:
+# - half_life_days: Number of days for weight to decay to 50%
+[profiles.exponential]
+strategy = "exponential"
+
+[profiles.exponential.default_params]
+half_life_days = 90.0  # 3 months default half-life
+
+# Spaced Repetition Decay
+#
+# Implements SM-2 (SuperMemo 2) algorithm for interval-based review scheduling.
+# Decay is linear within the scheduled interval, exponential after.
+#
+# Parameters:
+# - easiness_factor: Learning ease (1.3-3.0, default 2.5)
+# - interval_days: Current review interval
+# - repetitions: Number of successful reviews
+# - last_review: Timestamp of last review (milliseconds)
+[profiles.spaced-repetition]
+strategy = "spaced-repetition"
+
+[profiles.spaced-repetition.default_params]
+easiness_factor = 2.5
+interval_days = 1.0
+repetitions = 0
+last_review = 0
+
+# Importance-Weighted Decay
+#
+# Modulates decay rate based on content importance (CVSS scores for vulnerabilities).
+# Critical findings decay slower than low-severity ones.
+#
+# Parameters:
+# - base_half_life_days: Base half-life for medium importance
+# - cvss_score: Optional CVSS score (0.0-10.0)
+# - severity_multipliers: Multipliers per severity level
+[profiles.importance-weighted]
+strategy = "importance-weighted"
+
+[profiles.importance-weighted.default_params]
+base_half_life_days = 90.0
+cvss_score = 5.0  # Medium severity default
+
+[profiles.importance-weighted.default_params.severity_multipliers]
+critical = 3.0   # 270 days half-life
+high = 2.0       # 180 days half-life
+medium = 1.0     # 90 days half-life (base)
+low = 0.5        # 45 days half-life
+
+# Context-Sensitive Decay
+#
+# Applies different decay rates based on observation type.
+# Architectural decisions persist longer than bug fixes.
+#
+# Parameters:
+# - default_half_life_days: Fallback half-life for unknown types
+# - type_half_lives: Half-life per observation type
+[profiles.context-sensitive]
+strategy = "context-sensitive"
+
+[profiles.context-sensitive.default_params]
+default_half_life_days = 90.0
+
+[profiles.context-sensitive.default_params.type_half_lives]
+architecture = 180.0  # 6 months
+decision = 180.0      # 6 months
+pattern = 120.0       # 4 months
+discovery = 90.0      # 3 months
+bugfix = 60.0         # 2 months
+config = 60.0         # 2 months
+manual = 30.0         # 1 month

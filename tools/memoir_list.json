@@ -1,0 +1,9 @@
+{
+  "name": "memoir_list",
+  "description": "List all memoirs with concept and link counts",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}

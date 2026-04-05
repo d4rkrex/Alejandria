@@ -1,0 +1,27 @@
+{
+  "name": "memoir_refine",
+  "description": "Update concept definition and/or labels",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "memoir": {
+        "type": "string",
+        "description": "Memoir name (required)"
+      },
+      "concept": {
+        "type": "string",
+        "description": "Concept name (required)"
+      },
+      "definition": {
+        "type": "string",
+        "description": "New definition"
+      },
+      "labels": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "New labels"
+      }
+    },
+    "required": ["memoir", "concept"]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "alejandria": {
+      "command": "/home/yourusername/.local/bin/alejandria",
+      "args": ["serve"],
+      "env": {
+        "ALEJANDRIA_DB_PATH": "/home/yourusername/.local/share/alejandria/claude.db",
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}

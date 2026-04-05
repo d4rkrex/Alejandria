@@ -1,0 +1,9 @@
+{
+  "name": "mem_stats",
+  "description": "Get memory statistics",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
