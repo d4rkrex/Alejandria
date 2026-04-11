@@ -11,6 +11,7 @@ Comprehensive deployment guide for Alejandria covering all deployment scenarios 
 - [Building from Source](#building-from-source)
 - [Deployment Scenarios](#deployment-scenarios)
   - [Claude Desktop Integration (Recommended)](#claude-desktop-integration-recommended)
+  - [HTTP Transport for Remote Access](#http-transport-for-remote-access)
   - [Standalone Daemon Mode](#standalone-daemon-mode)
   - [Library Integration](#library-integration)
   - [Docker Deployment](#docker-deployment)
@@ -223,6 +224,74 @@ Claude: [Uses mem_list_topics tool] You don't have any topics yet...
 ```
 
 See `examples/claude-desktop/claude_desktop_config.json.example` for full configuration reference.
+
+---
+
+### HTTP Transport for Remote Access
+
+**Use Case**: Deploy Alejandria as a remote HTTP server for multi-team access with real-time SSE notifications.
+
+**Features**:
+- **JSON-RPC API** over HTTP for remote access
+- **Server-Sent Events (SSE)** for real-time notifications
+- **Multi-team isolation** with per-team API keys and databases
+- **Enterprise security** with TLS, rate limiting, and authentication
+- **Database encryption** with SQLCipher (AES-256)
+
+**Quick Start**:
+
+```bash
+# 1. Build with HTTP transport and encryption
+cargo build --release --features http-transport,encryption
+
+# 2. Set environment variables
+export ALEJANDRIA_API_KEY="your-256-bit-hex-key"
+export ALEJANDRIA_INSTANCE_ID="unique-uuid"
+
+# 3. Start HTTP server
+alejandria serve --http --bind 0.0.0.0:8080
+```
+
+**Production Deployment**:
+
+For production deployment with Nginx reverse proxy, TLS, systemd service, and multi-team setup, see:
+
+**[HTTP_SETUP.md](HTTP_SETUP.md)** - Complete HTTP deployment guide covering:
+- API key generation (SHA-256 hashing)
+- Multi-team isolation strategies
+- TLS certificate setup (Let's Encrypt)
+- Nginx reverse proxy configuration
+- Systemd service installation
+- Firewall rules and SELinux policies
+- Automated deployment script
+- Monitoring and troubleshooting
+
+**Example Client Request**:
+
+```bash
+# JSON-RPC request
+curl -X POST https://team.alejandria.example.com/rpc \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "mem_search",
+    "params": {"query": "authentication", "limit": 5},
+    "id": 1
+  }'
+
+# Subscribe to SSE events
+curl -N https://team.alejandria.example.com/events \
+  -H "X-API-Key: your-api-key"
+```
+
+**Security Features**:
+- Constant-time API key comparison (prevents timing attacks)
+- Rate limiting: 100 req/min per API key
+- Connection limits: 10 per key, 50 per IP, 1000 global
+- Input validation: JSON-RPC method whitelist
+- SQLCipher encryption: AES-256 with PBKDF2 key derivation
+- SSE per-connection isolation: Prevents cross-team data leakage
 
 ---
 

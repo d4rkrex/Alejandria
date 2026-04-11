@@ -1,0 +1,50 @@
+[Unit]
+Description=Alejandria MCP Server (HTTP Transport)
+Documentation=https://github.com/yourusername/alejandria
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alejandria
+Group=alejandria
+WorkingDirectory=/var/lib/alejandria
+Environment="ALEJANDRIA_DB_PATH=/var/lib/alejandria/alejandria.db"
+Environment="ALEJANDRIA_API_KEY_FILE=/etc/alejandria/api_keys.txt"
+Environment="ALEJANDRIA_INSTANCE_ID_FILE=/etc/alejandria/instance_id.txt"
+Environment="ALEJANDRIA_BIND=0.0.0.0:8080"
+EnvironmentFile=-/etc/alejandria/http.conf
+ExecStartPre=/bin/sh -c 'export ALEJANDRIA_API_KEY=$(cat ${ALEJANDRIA_API_KEY_FILE} | head -1) && export ALEJANDRIA_INSTANCE_ID=$(cat ${ALEJANDRIA_INSTANCE_ID_FILE})'
+ExecStart=/usr/local/bin/alejandria serve --http
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/alejandria
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+PrivateMounts=true
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=alejandria-http
+
+[Install]
+WantedBy=multi-user.target
