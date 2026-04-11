@@ -1,21 +1,18 @@
-//! MCP Server implementation with stdio transport
+//! MCP Server protocol handler
 //!
-//! This module implements the main server loop that:
-//! 1. Reads line-delimited JSON from stdin
-//! 2. Parses JSON-RPC 2.0 requests
-//! 3. Dispatches to appropriate handlers
-//! 4. Writes JSON-RPC responses to stdout
+//! This module implements the transport-agnostic JSON-RPC 2.0 protocol handler
+//! that dispatches requests to appropriate tool implementations.
 
 use crate::protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, ToolCallParams};
 use crate::tools;
+use crate::transport::{StdioTransport, Transport};
 use alejandria_core::{MemoirStore, MemoryStore};
 use serde_json::{json, Value};
-use std::io::{self, BufRead, Write};
+use std::io;
 
-/// Run the MCP server with stdio transport
+/// Run the MCP server with stdio transport (legacy entry point)
 ///
-/// Reads line-delimited JSON from stdin and writes responses to stdout.
-/// Continues until EOF or fatal error.
+/// This is a convenience wrapper around `StdioTransport::run()` for backward compatibility.
 ///
 /// # Arguments
 ///
@@ -23,40 +20,11 @@ use std::io::{self, BufRead, Write};
 ///
 /// # Errors
 ///
-/// Returns error if stdin/stdout operations fail or if server encounters
-/// unrecoverable error.
-pub fn run_stdio_server<S: MemoryStore + MemoirStore>(store: S) -> io::Result<()> {
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    let store = std::sync::Arc::new(store);
-
-    for line in stdin.lock().lines() {
-        let line = line?;
-
-        // Skip empty lines
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        // Parse JSON-RPC request
-        let response = match serde_json::from_str::<JsonRpcRequest>(&line) {
-            Ok(request) => handle_request(request, store.clone()),
-            Err(e) => {
-                // Parse error - can't get request ID, use null
-                JsonRpcResponse::error(
-                    Value::Null,
-                    JsonRpcError::parse_error(format!("Invalid JSON: {}", e)),
-                )
-            }
-        };
-
-        // Write response
-        let response_json = serde_json::to_string(&response).map_err(io::Error::other)?;
-        writeln!(stdout, "{}", response_json)?;
-        stdout.flush()?;
-    }
-
-    Ok(())
+/// Returns error if transport encounters unrecoverable error.
+pub fn run_stdio_server<S: MemoryStore + MemoirStore + 'static>(store: S) -> io::Result<()> {
+    StdioTransport
+        .run(store)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
 /// Handle a single JSON-RPC request.

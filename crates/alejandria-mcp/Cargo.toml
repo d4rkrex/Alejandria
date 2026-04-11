@@ -17,6 +17,7 @@ serde_json = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
+anyhow = "1.0"
 
 # Time handling
 chrono = { workspace = true }
@@ -31,3 +32,4 @@ tempfile = "3.12"
 [features]
 default = []
 logging = ["log"]
+http-transport = []  # Feature flag for HTTP/SSE transport (Phase 2)
