@@ -21,7 +21,9 @@ use std::io;
 /// # Errors
 ///
 /// Returns error if transport encounters unrecoverable error.
-pub fn run_stdio_server<S: MemoryStore + MemoirStore + 'static>(store: S) -> io::Result<()> {
+pub fn run_stdio_server<S: MemoryStore + MemoirStore + Clone + 'static>(
+    store: S,
+) -> io::Result<()> {
     StdioTransport
         .run(store)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))

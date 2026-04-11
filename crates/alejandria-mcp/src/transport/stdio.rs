@@ -20,7 +20,7 @@ pub struct StdioTransport;
 impl Transport for StdioTransport {
     fn run<S>(self, store: S) -> Result<()>
     where
-        S: MemoryStore + MemoirStore + Send + Sync + 'static,
+        S: MemoryStore + MemoirStore + Send + Sync + Clone + 'static,
     {
         let stdin = io::stdin();
         let mut stdout = io::stdout();

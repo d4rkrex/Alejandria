@@ -30,7 +30,7 @@ pub trait Transport {
     /// Returns `Ok(())` on graceful shutdown, or an error if a fatal condition occurs.
     fn run<S>(self, store: S) -> Result<()>
     where
-        S: MemoryStore + MemoirStore + Send + Sync + 'static;
+        S: MemoryStore + MemoirStore + Send + Sync + Clone + 'static;
 }
 
 // Always compile stdio transport

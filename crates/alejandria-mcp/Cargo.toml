@@ -25,6 +25,34 @@ chrono = { workspace = true }
 # Logging (optional, for debugging)
 log = { version = "0.4", optional = true }
 
+# HTTP server (http-transport feature)
+axum = { version = "0.7", features = ["ws", "macros"], optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+tower = { version = "0.5", optional = true }
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"], optional = true }
+hyper = { version = "1", optional = true }
+
+# Security - constant-time comparison (always available for security)
+subtle = "2.6"
+sha2 = "0.10"
+hex = "0.4"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+
+# Security - optional for http-transport
+rand = { version = "0.8", optional = true }
+
+# SSE streaming (http-transport feature)
+async-stream = { version = "0.3", optional = true }
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
+futures = { version = "0.3", optional = true }
+
+# Rate limiting (http-transport feature)
+tower_governor = { version = "0.4", optional = true }
+
+# Tracing for structured logging (http-transport feature)
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
+
 [dev-dependencies]
 # Testing utilities
 tempfile = "3.12"
@@ -32,4 +60,17 @@ tempfile = "3.12"
 [features]
 default = []
 logging = ["log"]
-http-transport = []  # Feature flag for HTTP/SSE transport (Phase 2)
+http-transport = [
+    "axum",
+    "tokio",
+    "tower",
+    "tower-http",
+    "hyper",
+    "rand",
+    "async-stream",
+    "tokio-stream",
+    "futures",
+    "tower_governor",
+    "tracing",
+    "tracing-subscriber"
+]
