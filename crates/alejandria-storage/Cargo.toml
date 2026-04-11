@@ -6,7 +6,7 @@ edition = "2021"
 [features]
 default = ["embeddings"]
 embeddings = []
-encryption = ["rusqlite/sqlcipher"]
+encryption = ["rusqlite/bundled-sqlcipher"]
 
 [dependencies]
 alejandria-core = { path = "../alejandria-core" }

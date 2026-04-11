@@ -1,0 +1,12 @@
+# Alejandria Stdio Transport Configuration
+# Default configuration for stdio mode (Claude Desktop, etc.)
+
+db_path = "./alejandria.db"
+
+[http]
+# HTTP transport disabled in stdio mode
+enabled = false
+
+[database]
+encryption_enabled = false
+encryption_key = ""

@@ -203,8 +203,18 @@ enum Commands {
 
     /// Start MCP server
     #[command(after_help = "Examples:\n  \
-        alejandria serve")]
-    Serve,
+        alejandria serve\n  \
+        alejandria serve --http\n  \
+        alejandria serve --http --bind 0.0.0.0:8080")]
+    Serve {
+        /// Enable HTTP transport mode (default: stdio)
+        #[arg(long)]
+        http: bool,
+
+        /// HTTP bind address (default: from config)
+        #[arg(long)]
+        bind: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -404,7 +414,7 @@ fn main() -> Result<()> {
                 depth,
             } => commands::memoir::inspect(memoir, concept, depth, cli.json),
         },
-        Commands::Serve => commands::serve::run(),
+        Commands::Serve { http, bind } => commands::serve::run(http, bind),
     };
 
     match result {

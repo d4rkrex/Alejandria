@@ -10,6 +10,11 @@ repository.workspace = true
 name = "alejandria"
 path = "src/main.rs"
 
+[features]
+default = []
+http-transport = ["alejandria-mcp/http-transport"]
+encryption = ["alejandria-storage/encryption"]
+
 [dependencies]
 # Workspace dependencies
 alejandria-core = { path = "../alejandria-core" }
@@ -26,6 +31,7 @@ clap = { workspace = true }
 toml = { workspace = true }
 anyhow = "1.0"
 dirs = "5.0"
+uuid = { version = "1.11", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = "3.8"

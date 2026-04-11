@@ -1,0 +1,56 @@
+# Alejandria HTTP Transport Configuration
+# Example configuration for HTTP mode deployment
+
+# Database path
+db_path = "/var/lib/alejandria/alejandria.db"
+
+[http]
+enabled = true
+bind = "0.0.0.0:8080"  # Listen on all interfaces
+
+# Connection limits (from design.md)
+max_connections_per_key = 10
+max_connections_per_ip = 50
+max_connections_global = 1000
+
+# Timeouts
+session_timeout_secs = 3600  # 1 hour
+request_timeout_secs = 30
+
+[http.tls]
+enabled = false
+cert_path = "/etc/alejandria/tls/cert.pem"
+key_path = "/etc/alejandria/tls/key.pem"
+
+[http.rate_limit]
+requests_per_minute = 100
+burst_size = 20
+
+[http.cors]
+# Restrict in production! Use specific domains
+allowed_origins = ["*"]
+
+[auth]
+# API keys: Generate SHA-256 hash with:
+# echo -n "your-secret-key" | sha256sum
+# 
+# Example entries:
+# api_keys = [
+#     { name = "team-alpha", key = "team-alpha-secret-key-here" },
+#     { name = "team-beta", key = "team-beta-secret-key-here" },
+# ]
+api_keys = []
+
+[database]
+# Enable SQLCipher encryption (requires encryption feature)
+encryption_enabled = false
+
+# Hex-encoded 32-byte encryption key
+# Generate with: openssl rand -hex 32
+encryption_key = ""
+
+[instance]
+# Unique instance ID for multi-tenant isolation
+# Generate with: uuidgen or python -c "import uuid; print(uuid.uuid4())"
+# IMPORTANT: Each deployment must have a unique ID
+instance_id = "00000000-0000-0000-0000-000000000000"
