@@ -13,9 +13,11 @@ use axum::{
     },
     Json,
 };
-use futures::stream::{self, Stream};
+use futures::stream::{Stream, StreamExt};
+use sha2::Digest;
 use std::convert::Infallible;
 use std::time::Duration;
+use tokio_stream::wrappers::BroadcastStream;
 
 /// Handle JSON-RPC requests
 ///
@@ -44,28 +46,60 @@ where
 /// GET /events
 /// Returns SSE stream for server-to-client notifications
 ///
-/// Note: Per-connection isolation is enforced via the authentication middleware
-/// which binds the session to the API key. Events are filtered by session ownership.
+/// Per-connection isolation is enforced via the authentication middleware
+/// which binds the session to the API key. Each connection gets its own
+/// broadcast channel to prevent data leakage (ID-003 mitigation).
 pub async fn handle_sse<S>(
-    State(_state): State<AppState<S>>,
+    State(state): State<AppState<S>>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, HttpError>
 where
     S: MemoryStore + MemoirStore + Send + Sync + 'static,
 {
-    tracing::info!("SSE connection established");
-
-    // TODO: Implement per-connection broadcast channel (Task 26-28)
-    // For now, return a simple heartbeat stream to satisfy the endpoint contract
+    // Extract auth context (set by auth middleware)
+    // For now, use the configured API key as session identifier
+    // In production, this should come from request extensions
+    let api_key_hash = sha2::Sha256::digest(state.api_key.as_bytes());
+    let auth_ctx = hex::encode(api_key_hash);
     
-    let stream = stream::iter(vec![
-        Ok(Event::default().comment("Connected")),
-        // Heartbeat events will be sent every 30 seconds
-    ]);
-
-    Ok(Sse::new(stream).keep_alive(
+    // Register connection with SSE manager
+    let session_id = uuid::Uuid::new_v4().to_string(); // In production, use actual session ID
+    let (connection_id, receiver) = state
+        .sse_manager
+        .register_connection(auth_ctx.clone(), session_id.clone())
+        .await;
+    
+    tracing::info!(
+        "SSE connection established: connection_id={}, session={}",
+        connection_id,
+        session_id
+    );
+    
+    // Send initial connection event
+    let initial_event = super::sse::SseEvent::Connection {
+        session_id: session_id.clone(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    };
+    
+    let _ = state.sse_manager.send_to_connection(connection_id, initial_event).await;
+    
+    // Convert broadcast receiver to stream
+    let event_stream = BroadcastStream::new(receiver)
+        .filter_map(|result| async move {
+            match result {
+                Ok(event) => {
+                    // Serialize event to JSON
+                    let json = serde_json::to_string(&event).ok()?;
+                    Some(Ok(Event::default().data(json)))
+                }
+                Err(_) => None, // Lagged or closed channel
+            }
+        });
+    
+    // Create SSE response with 30-second heartbeat
+    Ok(Sse::new(event_stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(30))
-            .text("keepalive"),
+            .text("heartbeat"),
     ))
 }
 

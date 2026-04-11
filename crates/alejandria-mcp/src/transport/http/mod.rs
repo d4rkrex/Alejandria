@@ -25,6 +25,7 @@ pub mod auth;
 pub mod connection;
 pub mod handlers;
 pub mod session;
+pub mod sse;
 
 /// HTTP transport configuration
 #[derive(Debug, Clone)]
@@ -96,6 +97,9 @@ pub struct AppState<S> {
     /// Session manager
     pub session_manager: Arc<RwLock<session::SessionManager>>,
     
+    /// SSE manager for event broadcasting
+    pub sse_manager: Arc<sse::SseManager>,
+    
     /// Instance ID for multi-tenant isolation
     pub instance_id: Uuid,
     
@@ -159,6 +163,9 @@ impl HttpTransport {
             session::SessionManager::new(self.config.connection_limits.idle_timeout_secs)
         ));
         
+        // Initialize SSE manager with channel capacity of 100 events per connection
+        let sse_manager = Arc::new(sse::SseManager::new(100));
+        
         // Initialize rate limiter
         let rate_limit_config = crate::middleware::rate_limit::RateLimitConfig::default();
         let rate_limiter = Arc::new(crate::middleware::rate_limit::RateLimiter::new(rate_limit_config));
@@ -168,6 +175,7 @@ impl HttpTransport {
             store: Arc::new(store),
             connection_manager,
             session_manager,
+            sse_manager,
             instance_id: self.instance_id,
             config: self.config.clone(),
             api_key: self.api_key,
