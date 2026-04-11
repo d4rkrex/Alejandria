@@ -33,6 +33,9 @@ pub mod server;
 pub mod tools;
 pub mod transport;
 
+#[cfg(feature = "http-transport")]
+pub mod middleware;
+
 // Re-export main entry points
 pub use protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, ToolCallParams, ToolResult};
 pub use server::{handle_request, run_stdio_server};

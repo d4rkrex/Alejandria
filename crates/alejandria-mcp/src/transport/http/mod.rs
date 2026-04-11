@@ -159,6 +159,10 @@ impl HttpTransport {
             session::SessionManager::new(self.config.connection_limits.idle_timeout_secs)
         ));
         
+        // Initialize rate limiter
+        let rate_limit_config = crate::middleware::rate_limit::RateLimitConfig::default();
+        let rate_limiter = Arc::new(crate::middleware::rate_limit::RateLimiter::new(rate_limit_config));
+        
         // Create shared application state
         let app_state = AppState {
             store: Arc::new(store),
@@ -170,21 +174,27 @@ impl HttpTransport {
         };
         
         // Build router with routes
+        // Middleware layers are applied in REVERSE order (last layer = outermost)
+        // Request flow: Body Limit -> Auth -> Rate Limit -> Input Validation -> Handler
         let app = Router::new()
             .route("/rpc", post(handlers::handle_rpc))
             .route("/events", get(handlers::handle_sse))
             .route("/health", get(handlers::handle_health))
             .with_state(app_state.clone())
-            .layer(
-                tower::ServiceBuilder::new()
-                    .layer(axum::middleware::from_fn_with_state(
-                        app_state.clone(),
-                        auth::authenticate,
-                    ))
-                    .layer(tower_http::limit::RequestBodyLimitLayer::new(
-                        self.config.max_request_size_bytes,
-                    ))
-            );
+            .layer(axum::middleware::from_fn(
+                crate::middleware::input_validation::InputValidationLayer::middleware
+            ))
+            .layer(axum::middleware::from_fn(move |req, next| {
+                let limiter = rate_limiter.clone();
+                crate::middleware::rate_limit::RateLimitLayer::middleware(limiter, req, next)
+            }))
+            .layer(axum::middleware::from_fn_with_state(
+                app_state.clone(),
+                auth::authenticate,
+            ))
+            .layer(tower_http::limit::RequestBodyLimitLayer::new(
+                self.config.max_request_size_bytes,
+            ));
         
         // Start server
         tracing::info!("Starting HTTP transport on {}", self.config.bind);
