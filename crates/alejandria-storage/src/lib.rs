@@ -19,20 +19,23 @@
 //! # }
 //! ```
 
+pub mod export;
+pub mod import;
 pub mod memoir_store;
 pub mod migrations;
 pub mod schema;
 pub mod search;
-pub mod export;
-pub mod import;
 mod store;
+
+#[cfg(feature = "encryption")]
+pub mod encryption;
 
 pub use store::SqliteStore;
 
 // Re-export export types for convenience
 pub use export::{
-    ExportFormat, ExportOptions, ExportMetadata, ExportFiltersApplied,
-    export_json, export_csv, export_markdown,
+    export_csv, export_json, export_markdown, ExportFiltersApplied, ExportFormat, ExportMetadata,
+    ExportOptions,
 };
 
 // Re-export import types for convenience

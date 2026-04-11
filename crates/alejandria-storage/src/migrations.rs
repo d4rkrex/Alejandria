@@ -204,32 +204,38 @@ fn apply_migration(conn: &Connection, migration: &Migration) -> IcmResult<()> {
 }
 
 /// Apply migration 2 with column existence checks.
-/// 
+///
 /// SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN,
 /// so we check PRAGMA table_info first to avoid duplicate column errors.
 fn apply_migration_2_with_check(conn: &Connection, migration: &Migration) -> IcmResult<()> {
     // Check if decay_profile column exists
     let has_decay_profile: bool = conn
         .prepare("SELECT COUNT(*) FROM pragma_table_info('memories') WHERE name = 'decay_profile'")
-        .and_then(|mut stmt| stmt.query_row([], |row| {
-            let count: i32 = row.get(0)?;
-            Ok(count > 0)
-        }))
+        .and_then(|mut stmt| {
+            stmt.query_row([], |row| {
+                let count: i32 = row.get(0)?;
+                Ok(count > 0)
+            })
+        })
         .map_err(|e| IcmError::Database(format!("Failed to check decay_profile column: {}", e)))?;
 
     // Check if decay_params column exists
     let has_decay_params: bool = conn
         .prepare("SELECT COUNT(*) FROM pragma_table_info('memories') WHERE name = 'decay_params'")
-        .and_then(|mut stmt| stmt.query_row([], |row| {
-            let count: i32 = row.get(0)?;
-            Ok(count > 0)
-        }))
+        .and_then(|mut stmt| {
+            stmt.query_row([], |row| {
+                let count: i32 = row.get(0)?;
+                Ok(count > 0)
+            })
+        })
         .map_err(|e| IcmError::Database(format!("Failed to check decay_params column: {}", e)))?;
 
     // Add decay_profile column if it doesn't exist
     if !has_decay_profile {
         conn.execute("ALTER TABLE memories ADD COLUMN decay_profile TEXT", [])
-            .map_err(|e| IcmError::Database(format!("Failed to add decay_profile column: {}", e)))?;
+            .map_err(|e| {
+                IcmError::Database(format!("Failed to add decay_profile column: {}", e))
+            })?;
     }
 
     // Add decay_params column if it doesn't exist
@@ -239,8 +245,11 @@ fn apply_migration_2_with_check(conn: &Connection, migration: &Migration) -> Icm
     }
 
     // Create index (CREATE INDEX IF NOT EXISTS is safe)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_decay_profile ON memories(decay_profile)", [])
-        .map_err(|e| IcmError::Database(format!("Failed to create decay_profile index: {}", e)))?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_decay_profile ON memories(decay_profile)",
+        [],
+    )
+    .map_err(|e| IcmError::Database(format!("Failed to create decay_profile index: {}", e)))?;
 
     // Record migration as applied
     record_migration(conn, migration)?;
@@ -408,7 +417,7 @@ mod tests {
     #[test]
     fn test_apply_migrations() {
         let conn = Connection::open_in_memory().unwrap();
-        
+
         // Initialize schema first (real-world usage pattern)
         schema::init_db(&conn).unwrap();
 
@@ -429,7 +438,7 @@ mod tests {
     #[test]
     fn test_apply_migrations_idempotent() {
         let conn = Connection::open_in_memory().unwrap();
-        
+
         // Initialize schema first
         schema::init_db(&conn).unwrap();
 
@@ -446,7 +455,7 @@ mod tests {
     #[test]
     fn test_list_applied_migrations() {
         let conn = Connection::open_in_memory().unwrap();
-        
+
         // Initialize schema first
         schema::init_db(&conn).unwrap();
 
@@ -466,7 +475,7 @@ mod tests {
     #[test]
     fn test_rollback_migration_fails_on_version_1() {
         let conn = Connection::open_in_memory().unwrap();
-        
+
         // Initialize schema first
         schema::init_db(&conn).unwrap();
 

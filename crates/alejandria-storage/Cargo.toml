@@ -6,11 +6,13 @@ edition = "2021"
 [features]
 default = ["embeddings"]
 embeddings = []
+encryption = ["rusqlite/sqlcipher"]
 
 [dependencies]
 alejandria-core = { path = "../alejandria-core" }
 
 # SQLite with modern features
+# SQLCipher encryption can be enabled with encryption feature
 rusqlite = { version = "0.34", features = ["bundled", "modern_sqlite"] }
 
 # Vector search extension for embeddings
@@ -31,6 +33,12 @@ thiserror = "1.0"
 
 # SHA-256 hashing for deduplication
 sha2 = "0.10"
+
+# Hex encoding for encryption keys
+hex = "0.4"
+
+# PBKDF2 for key derivation (encryption feature)
+pbkdf2 = { version = "0.12", default-features = false, features = ["simple"] }
 
 # CSV export support
 csv = "1.3"
