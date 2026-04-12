@@ -12,7 +12,8 @@
 //! - Memory management with search, filter, and export
 //! - Backup/restore with export/import wizards
 
-use alejandria_storage::{api_keys, ExportFormat, ExportOptions, Memory, SqliteStore};
+use alejandria_core::store::TopicInfo;
+use alejandria_storage::{api_keys, ExportFormat, ExportOptions, Memory, MemoryStore, SqliteStore};
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use crossterm::{
@@ -32,8 +33,7 @@ use ratatui::{
 };
 use regex::Regex;
 use std::fs::{self, OpenOptions};
-use std::io;
-use std::io::Write as IoWrite;
+use std::io::{self, Write as IoWrite};
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
@@ -337,6 +337,39 @@ impl AppState {
             self.keys_list_state.select(Some(last));
         }
     }
+
+    // Memories tab navigation
+    fn next_topic(&mut self) {
+        let count = self.topics_list.len();
+        if count == 0 {
+            return;
+        }
+        let i = match self.selected_topic_index {
+            Some(i) if i >= count - 1 => 0,
+            Some(i) => i + 1,
+            None => 0,
+        };
+        self.selected_topic_index = Some(i);
+    }
+
+    fn prev_topic(&mut self) {
+        let count = self.topics_list.len();
+        if count == 0 {
+            return;
+        }
+        let i = match self.selected_topic_index {
+            Some(0) => count - 1,
+            Some(i) => i - 1,
+            None => 0,
+        };
+        self.selected_topic_index = Some(i);
+    }
+
+    fn selected_topic(&self) -> Option<&str> {
+        self.selected_topic_index
+            .and_then(|i| self.topics_list.get(i))
+            .map(|(topic, _)| topic.as_str())
+    }
 }
 
 /// Run the TUI admin dashboard
@@ -502,6 +535,33 @@ fn run_app(
             }
         }
     }
+
+    Ok(())
+}
+
+// Helper functions for loading memories
+fn load_topics(store: &SqliteStore) -> Result<Vec<(String, usize)>> {
+    let topics = store
+        .list_topics(None, None)
+        .context("Failed to load topics")?;
+
+    Ok(topics.into_iter().map(|t| (t.topic, t.count)).collect())
+}
+
+fn load_memories_for_topic(
+    store: &SqliteStore,
+    topic: &str,
+    limit: Option<usize>,
+) -> Result<Vec<Memory>> {
+    store
+        .get_by_topic(topic, limit, None)
+        .context("Failed to load memories for topic")
+}
+
+fn search_memories(store: &SqliteStore, query: &str, limit: usize) -> Result<Vec<Memory>> {
+    store
+        .search_by_keywords(query, limit)
+        .context("Failed to search memories")
 }
 
 fn ui(f: &mut Frame, app: &AppState) {
@@ -990,12 +1050,133 @@ fn reload_keys(app: &mut AppState, store: &SqliteStore) -> Result<()> {
 
 // ========== Memories Tab ==========
 
-fn render_memories_tab(f: &mut Frame, _app: &AppState, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title("Memories (Coming Soon)");
-    let text = Paragraph::new("Memories tab - Phase 2 implementation").block(block);
-    f.render_widget(text, area);
+fn render_memories_tab(f: &mut Frame, app: &AppState, area: Rect) {
+    // Split into topic list (left 40%) and memory detail (right 60%)
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(area);
+
+    // Render topics list
+    let items: Vec<ListItem> = app
+        .topics_list
+        .iter()
+        .map(|(topic, count)| {
+            let line = Line::from(vec![
+                Span::styled(topic, Style::default().fg(Color::Cyan)),
+                Span::raw(" "),
+                Span::styled(format!("({})", count), Style::default().fg(Color::DarkGray)),
+            ]);
+            ListItem::new(line)
+        })
+        .collect();
+
+    let mut list_state = ListState::default();
+    if let Some(idx) = app.selected_topic_index {
+        list_state.select(Some(idx));
+    }
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("Topics ({})", app.topics_list.len())),
+        )
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("▶ ");
+
+    f.render_stateful_widget(list, chunks[0], &mut list_state);
+
+    // Render memory detail panel
+    if let Some(topic) = app.selected_topic() {
+        render_topic_detail(f, app, topic, chunks[1]);
+    } else {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title("Memory Detail");
+        let text = Paragraph::new("Select a topic to view memories").block(block);
+        f.render_widget(text, chunks[1]);
+    }
+}
+
+fn render_topic_detail(f: &mut Frame, app: &AppState, topic: &str, area: Rect) {
+    // Filter memories by selected topic
+    let topic_memories: Vec<&Memory> = app
+        .memories_list
+        .iter()
+        .filter(|m| m.topic == topic)
+        .collect();
+
+    if topic_memories.is_empty() {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(format!("Topic: {}", topic));
+        let text = Paragraph::new("No memories in this topic").block(block);
+        f.render_widget(text, area);
+        return;
+    }
+
+    // Show first memory detail (in Phase 2, we'll add selection within topic)
+    let memory = topic_memories[0];
+
+    let detail_text = vec![
+        Line::from(vec![
+            Span::styled("ID: ", Style::default().fg(Color::Yellow)),
+            Span::raw(&memory.id),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Summary: ",
+            Style::default().fg(Color::Yellow),
+        )]),
+        Line::from(Span::raw(&memory.summary)),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Importance: ", Style::default().fg(Color::Yellow)),
+            Span::styled(
+                memory.importance.to_string(),
+                Style::default().fg(match memory.importance {
+                    alejandria_storage::Importance::Critical => Color::Red,
+                    alejandria_storage::Importance::High => Color::Magenta,
+                    alejandria_storage::Importance::Medium => Color::Yellow,
+                    alejandria_storage::Importance::Low => Color::Gray,
+                }),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Weight: ", Style::default().fg(Color::Yellow)),
+            Span::raw(format!("{:.2}", memory.weight)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Access Count: ", Style::default().fg(Color::Yellow)),
+            Span::raw(memory.access_count.to_string()),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Created: ", Style::default().fg(Color::Yellow)),
+            Span::raw(memory.created_at.format("%Y-%m-%d %H:%M:%S").to_string()),
+        ]),
+        Line::from(vec![
+            Span::styled("Updated: ", Style::default().fg(Color::Yellow)),
+            Span::raw(memory.updated_at.format("%Y-%m-%d %H:%M:%S").to_string()),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(detail_text)
+        .block(Block::default().borders(Borders::ALL).title(format!(
+            "Topic: {} ({} memories)",
+            topic,
+            topic_memories.len()
+        )))
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(paragraph, area);
 }
 
 // ========== Backup Tab ==========
