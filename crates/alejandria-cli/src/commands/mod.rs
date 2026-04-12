@@ -11,4 +11,5 @@ pub mod serve;
 pub mod stats;
 pub mod store;
 pub mod topics;
+pub mod tui;
 pub mod update;
