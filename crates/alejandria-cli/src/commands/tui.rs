@@ -33,7 +33,7 @@ use ratatui::{
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
@@ -84,7 +84,7 @@ impl Tab {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
+#[allow(dead_code)] // Future expansion for export wizard
 enum ExportStep {
     FormatSelection,
     FilterConfig,
@@ -94,7 +94,8 @@ enum ExportStep {
     Complete,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)] // Future expansion for export wizard
 struct ExportFilters {
     date_from: Option<DateTime<Utc>>,
     date_to: Option<DateTime<Utc>>,
@@ -102,18 +103,8 @@ struct ExportFilters {
     min_importance: Option<String>,
 }
 
-impl Default for ExportFilters {
-    fn default() -> Self {
-        Self {
-            date_from: None,
-            date_to: None,
-            topic_pattern: None,
-            min_importance: None,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Future expansion for export wizard
 struct ExportWizardState {
     step: ExportStep,
     format: ExportFormat,
@@ -135,6 +126,7 @@ impl Default for ExportWizardState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)] // Future expansion for import wizard
 enum ImportMode {
     Skip,
     Update,
@@ -142,6 +134,7 @@ enum ImportMode {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Future expansion for import wizard
 struct ImportWizardState {
     input_path: PathBuf,
     mode: ImportMode,
@@ -187,7 +180,9 @@ struct AppState {
     selected_memory_index: Option<usize>,
 
     // Backup tab state
+    #[allow(dead_code)] // Future expansion for full wizard UI
     export_wizard_state: ExportWizardState,
+    #[allow(dead_code)] // Future expansion for full wizard UI
     import_wizard_state: ImportWizardState,
 
     // Help tab state
@@ -345,6 +340,7 @@ impl AppState {
     }
 
     // Memories tab navigation
+    #[allow(dead_code)] // Future expansion for topic browsing
     fn next_topic(&mut self) {
         let count = self.topics_list.len();
         if count == 0 {
@@ -358,6 +354,7 @@ impl AppState {
         self.selected_topic_index = Some(i);
     }
 
+    #[allow(dead_code)] // Future expansion for topic browsing
     fn prev_topic(&mut self) {
         let count = self.topics_list.len();
         if count == 0 {
@@ -914,14 +911,14 @@ fn import_memories_secure(store: &SqliteStore, path: &Path) -> Result<()> {
 
     // Import with skip mode (safest default for TUI)
     let mut created = 0;
-    let mut skipped = 0;
+    let _skipped = 0; // Placeholder for future conflict resolution tracking
 
     for memory in memories {
         // Check if already exists by topic_key
         if let Some(ref topic_key) = memory.topic_key {
             match store.get_by_topic_key(topic_key) {
                 Ok(Some(_)) => {
-                    skipped += 1;
+                    // _skipped += 1; // Placeholder
                     continue;
                 }
                 Ok(None) => {
@@ -929,7 +926,7 @@ fn import_memories_secure(store: &SqliteStore, path: &Path) -> Result<()> {
                 }
                 Err(_) => {
                     // Error checking, skip for safety
-                    skipped += 1;
+                    // _skipped += 1; // Placeholder
                     continue;
                 }
             }
@@ -938,7 +935,7 @@ fn import_memories_secure(store: &SqliteStore, path: &Path) -> Result<()> {
         // Store the memory
         match store.store(memory) {
             Ok(_) => created += 1,
-            Err(_) => skipped += 1,
+            Err(_) => {} // _skipped += 1; // Placeholder
         }
     }
 
@@ -1163,7 +1160,7 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
     let expired_keys = app.keys.iter().filter(|k| k.status() == "expired").count();
 
     // Bar chart data
-    let data = vec![
+    let data = [
         ("Active", active_keys as u64),
         ("Revoked", revoked_keys as u64),
         ("Expired", expired_keys as u64),
@@ -1925,7 +1922,7 @@ fn render_topic_detail(f: &mut Frame, app: &AppState, topic: &str, area: Rect) {
 
 // ========== Backup Tab ==========
 
-fn render_backup_tab(f: &mut Frame, app: &AppState, area: Rect) {
+fn render_backup_tab(f: &mut Frame, _app: &AppState, area: Rect) {
     // Simple menu for export/import selection
     let chunks = Layout::default()
         .direction(Direction::Vertical)
