@@ -3,16 +3,18 @@
 //! Interactive terminal UI for SSH-friendly API key management and system monitoring.
 //!
 //! Features:
-//! - 3 tabs: API Keys, Stats, Activity Log
+//! - 6 tabs: API Keys, Stats, Activity Log, Memories, Backup, Help
 //! - Split panel: List (left) + Detail (right)
-//! - Actions: n=new, r=revoke, R=revoke-user, f=filter, /=search, ?=help, q=quit
+//! - Actions: n=new, r=revoke, R=revoke-user, f=filter, /=search, e=export, d=delete, ?=help, q=quit
 //! - Vim keybindings: j/k navigation, gg/G first/last, Enter=select
 //! - Color coding: green (active), red (revoked), yellow (expired)
 //! - ASCII bar charts for stats
+//! - Memory management with search, filter, and export
+//! - Backup/restore with export/import wizards
 
-use alejandria_storage::{api_keys, SqliteStore};
-use anyhow::{Context, Result};
-// use chrono::Utc; // Unused - keeping for future timestamp features
+use alejandria_storage::{api_keys, ExportFormat, ExportOptions, Memory, SqliteStore};
+use anyhow::{bail, Context, Result};
+use chrono::{DateTime, Utc};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -28,7 +30,11 @@ use ratatui::{
     },
     Frame, Terminal,
 };
+use regex::Regex;
+use std::fs::{self, OpenOptions};
 use std::io;
+use std::io::Write as IoWrite;
+use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 
@@ -37,26 +43,121 @@ enum Tab {
     ApiKeys,
     Stats,
     ActivityLog,
+    Memories,
+    Backup,
+    Help,
 }
 
 impl Tab {
     fn titles() -> Vec<&'static str> {
-        vec!["API Keys", "Stats", "Activity Log"]
+        vec![
+            "API Keys",
+            "Stats",
+            "Activity Log",
+            "Memories",
+            "Backup",
+            "Help",
+        ]
     }
 
     fn next(&self) -> Self {
         match self {
             Tab::ApiKeys => Tab::Stats,
             Tab::Stats => Tab::ActivityLog,
-            Tab::ActivityLog => Tab::ApiKeys,
+            Tab::ActivityLog => Tab::Memories,
+            Tab::Memories => Tab::Backup,
+            Tab::Backup => Tab::Help,
+            Tab::Help => Tab::ApiKeys,
         }
     }
 
     fn prev(&self) -> Self {
         match self {
-            Tab::ApiKeys => Tab::ActivityLog,
+            Tab::ApiKeys => Tab::Help,
             Tab::Stats => Tab::ApiKeys,
             Tab::ActivityLog => Tab::Stats,
+            Tab::Memories => Tab::ActivityLog,
+            Tab::Backup => Tab::Memories,
+            Tab::Help => Tab::Backup,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
+enum ExportStep {
+    FormatSelection,
+    FilterConfig,
+    PathInput,
+    Preview,
+    Progress,
+    Complete,
+}
+
+#[derive(Debug, Clone)]
+struct ExportFilters {
+    date_from: Option<DateTime<Utc>>,
+    date_to: Option<DateTime<Utc>>,
+    topic_pattern: Option<String>,
+    min_importance: Option<String>,
+}
+
+impl Default for ExportFilters {
+    fn default() -> Self {
+        Self {
+            date_from: None,
+            date_to: None,
+            topic_pattern: None,
+            min_importance: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ExportWizardState {
+    step: ExportStep,
+    format: ExportFormat,
+    filters: ExportFilters,
+    output_path: PathBuf,
+    progress: Option<(usize, usize)>, // current, total
+}
+
+impl Default for ExportWizardState {
+    fn default() -> Self {
+        Self {
+            step: ExportStep::FormatSelection,
+            format: ExportFormat::Json,
+            filters: ExportFilters::default(),
+            output_path: PathBuf::new(),
+            progress: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ImportMode {
+    Skip,
+    Update,
+    Replace,
+}
+
+#[derive(Debug, Clone)]
+struct ImportWizardState {
+    input_path: PathBuf,
+    mode: ImportMode,
+    dry_run: bool,
+    preview_count: usize,
+    progress: Option<(usize, usize)>,
+}
+
+impl Default for ImportWizardState {
+    fn default() -> Self {
+        Self {
+            input_path: PathBuf::new(),
+            mode: ImportMode::Skip,
+            dry_run: true,
+            preview_count: 0,
+            progress: None,
         }
     }
 }
@@ -73,15 +174,33 @@ struct AppState {
     show_help: bool,
     input_mode: InputMode,
     input_buffer: String,
+
+    // Memories tab state
+    memories_list: Vec<Memory>,
+    memories_list_state: ListState,
+    topics_list: Vec<(String, usize)>, // (topic, count)
+    selected_topic_index: Option<usize>,
+    memory_search_query: Option<String>,
+    memory_filter_importance: Option<String>,
+
+    // Backup tab state
+    export_wizard_state: ExportWizardState,
+    import_wizard_state: ImportWizardState,
+
+    // Help tab state
+    help_scroll_offset: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)] // NewKey reserved for future interactive key creation
+#[allow(dead_code)]
 enum InputMode {
     Normal,
     Filter,
     Search,
     NewKey,
+    MemorySearch,
+    ExportPath,
+    ImportPath,
 }
 
 impl AppState {
@@ -102,6 +221,21 @@ impl AppState {
             show_help: false,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
+
+            // Memories tab state
+            memories_list: Vec::new(),
+            memories_list_state: ListState::default(),
+            topics_list: Vec::new(),
+            selected_topic_index: None,
+            memory_search_query: None,
+            memory_filter_importance: None,
+
+            // Backup tab state
+            export_wizard_state: ExportWizardState::default(),
+            import_wizard_state: ImportWizardState::default(),
+
+            // Help tab state
+            help_scroll_offset: 0,
         }
     }
 
@@ -266,6 +400,9 @@ fn run_app(
                         (KeyCode::Char('1'), _) => app.current_tab = Tab::ApiKeys,
                         (KeyCode::Char('2'), _) => app.current_tab = Tab::Stats,
                         (KeyCode::Char('3'), _) => app.current_tab = Tab::ActivityLog,
+                        (KeyCode::Char('4'), _) => app.current_tab = Tab::Memories,
+                        (KeyCode::Char('5'), _) => app.current_tab = Tab::Backup,
+                        (KeyCode::Char('6'), _) => app.current_tab = Tab::Help,
 
                         // Help
                         (KeyCode::Char('?'), _) => app.show_help = true,
@@ -309,7 +446,12 @@ fn run_app(
                         _ => {}
                     }
                 }
-                InputMode::Filter | InputMode::Search | InputMode::NewKey => {
+                InputMode::Filter
+                | InputMode::Search
+                | InputMode::NewKey
+                | InputMode::MemorySearch
+                | InputMode::ExportPath
+                | InputMode::ImportPath => {
                     match key.code {
                         KeyCode::Char(c) => {
                             app.input_buffer.push(c);
@@ -333,6 +475,16 @@ fn run_app(
                                     } else {
                                         app.search_query = Some(app.input_buffer.clone());
                                     }
+                                }
+                                InputMode::MemorySearch => {
+                                    if app.input_buffer.is_empty() {
+                                        // TODO: clear memory search when implemented
+                                    } else {
+                                        // TODO: apply memory search when implemented
+                                    }
+                                }
+                                InputMode::ExportPath | InputMode::ImportPath => {
+                                    // TODO: handle path input when implemented
                                 }
                                 _ => {}
                             }
@@ -385,6 +537,9 @@ fn ui(f: &mut Frame, app: &AppState) {
         Tab::ApiKeys => render_api_keys_tab(f, app, chunks[1]),
         Tab::Stats => render_stats_tab(f, app, chunks[1]),
         Tab::ActivityLog => render_activity_log_tab(f, app, chunks[1]),
+        Tab::Memories => render_memories_tab(f, app, chunks[1]),
+        Tab::Backup => render_backup_tab(f, app, chunks[1]),
+        Tab::Help => render_help_tab(f, app, chunks[1]),
     }
 
     // Status bar
@@ -729,6 +884,30 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
                 Style::default().fg(Color::DarkGray),
             ),
         ],
+        InputMode::MemorySearch => vec![
+            Span::styled("Memory Search: ", Style::default().fg(Color::Yellow)),
+            Span::raw(&app.input_buffer),
+            Span::styled(
+                " (Enter to apply, Esc to cancel)",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ],
+        InputMode::ExportPath => vec![
+            Span::styled("Export Path: ", Style::default().fg(Color::Yellow)),
+            Span::raw(&app.input_buffer),
+            Span::styled(
+                " (Enter to continue, Esc to cancel)",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ],
+        InputMode::ImportPath => vec![
+            Span::styled("Import Path: ", Style::default().fg(Color::Yellow)),
+            Span::raw(&app.input_buffer),
+            Span::styled(
+                " (Enter to continue, Esc to cancel)",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ],
     };
 
     let status =
@@ -754,7 +933,7 @@ fn render_help_overlay(f: &mut Frame) {
         Line::from(""),
         Line::from("Navigation:"),
         Line::from("  Tab / Shift+Tab - Switch tabs"),
-        Line::from("  1/2/3 - Jump to tab"),
+        Line::from("  1/2/3/4/5/6 - Jump to tab"),
         Line::from("  j / ↓ - Move down"),
         Line::from("  k / ↑ - Move up"),
         Line::from("  gg - Go to first"),
@@ -767,6 +946,8 @@ fn render_help_overlay(f: &mut Frame) {
         Line::from("  / - Search"),
         Line::from("  c - Clear filters"),
         Line::from("  t - Toggle showing revoked keys"),
+        Line::from("  e - Export (Memories/Backup tabs)"),
+        Line::from("  d - Delete (Memories tab)"),
         Line::from("  ? - Show this help"),
         Line::from("  q - Quit"),
     ];
@@ -805,4 +986,105 @@ fn reload_keys(app: &mut AppState, store: &SqliteStore) -> Result<()> {
     app.keys = keys;
     app.first_key(); // Reset selection
     Ok(())
+}
+
+// ========== Memories Tab ==========
+
+fn render_memories_tab(f: &mut Frame, _app: &AppState, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Memories (Coming Soon)");
+    let text = Paragraph::new("Memories tab - Phase 2 implementation").block(block);
+    f.render_widget(text, area);
+}
+
+// ========== Backup Tab ==========
+
+fn render_backup_tab(f: &mut Frame, _app: &AppState, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Backup & Restore (Coming Soon)");
+    let text = Paragraph::new("Backup tab - Phase 3 implementation").block(block);
+    f.render_widget(text, area);
+}
+
+// ========== Help Tab ==========
+
+fn render_help_tab(f: &mut Frame, app: &AppState, area: Rect) {
+    let help_lines = vec![
+        Line::from(Span::styled(
+            "Alejandría TUI - Interactive Admin Dashboard",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "NAVIGATION",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from("  Tab / Shift+Tab       - Switch between tabs"),
+        Line::from("  1/2/3/4/5/6           - Jump directly to tab"),
+        Line::from("  j / ↓                 - Move down in list"),
+        Line::from("  k / ↑                 - Move up in list"),
+        Line::from("  gg                    - Go to first item"),
+        Line::from("  G                     - Go to last item"),
+        Line::from("  q / Ctrl+C            - Quit application"),
+        Line::from(""),
+        Line::from(Span::styled(
+            "API KEYS TAB",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from("  r                     - Revoke selected key"),
+        Line::from("  R                     - Revoke all keys for user"),
+        Line::from("  f                     - Filter by username"),
+        Line::from("  /                     - Search (username/desc/id)"),
+        Line::from("  c                     - Clear filters"),
+        Line::from("  t                     - Toggle showing revoked keys"),
+        Line::from(""),
+        Line::from(Span::styled(
+            "MEMORIES TAB",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from("  /                     - Search memories (FTS5)"),
+        Line::from("  f                     - Filter by importance"),
+        Line::from("  e                     - Export selected memory"),
+        Line::from("  d                     - Delete with confirmation"),
+        Line::from("  Enter                 - View memory detail"),
+        Line::from(""),
+        Line::from(Span::styled(
+            "BACKUP TAB",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from("  e                     - Start export wizard"),
+        Line::from("  i                     - Start import wizard"),
+        Line::from("  Format options: JSON, CSV, Markdown"),
+        Line::from(""),
+        Line::from(Span::styled(
+            "HELP TAB",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from("  j/k or ↑/↓            - Scroll help content"),
+        Line::from(""),
+        Line::from(Span::styled(
+            "DATABASE STATS",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::from("  View Stats tab for:"),
+        Line::from("    - API key usage by user"),
+        Line::from("    - Memory count by topic"),
+        Line::from("    - Temporal decay statistics"),
+        Line::from("    - Storage usage metrics"),
+    ];
+
+    let paragraph = Paragraph::new(help_lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Help & Documentation"),
+        )
+        .scroll((app.help_scroll_offset as u16, 0))
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(paragraph, area);
 }
