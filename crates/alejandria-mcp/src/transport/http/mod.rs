@@ -39,11 +39,27 @@ pub struct HttpConfig {
     /// Maximum request body size in bytes
     pub max_request_size_bytes: usize,
     
-    /// CORS enabled
-    pub cors_enabled: bool,
+    /// CORS configuration
+    pub cors: CorsConfig,
     
     /// Connection limits
     pub connection_limits: ConnectionLimits,
+}
+
+/// CORS configuration
+#[derive(Debug, Clone)]
+pub struct CorsConfig {
+    /// Enable CORS middleware
+    pub enabled: bool,
+    
+    /// Allowed origins (must be explicit - no wildcards in production)
+    pub allowed_origins: Vec<String>,
+    
+    /// Allow all origins in development mode only
+    pub allow_all_dev: bool,
+    
+    /// Max age for preflight requests (seconds)
+    pub max_age_secs: u64,
 }
 
 impl Default for HttpConfig {
@@ -52,8 +68,19 @@ impl Default for HttpConfig {
             bind: "127.0.0.1:3000".parse().unwrap(),
             request_timeout_secs: 60,
             max_request_size_bytes: 1024 * 1024, // 1MB
-            cors_enabled: false,
+            cors: CorsConfig::default(),
             connection_limits: ConnectionLimits::default(),
+        }
+    }
+}
+
+impl Default for CorsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            allowed_origins: vec![],
+            allow_all_dev: true,
+            max_age_secs: 3600,
         }
     }
 }
@@ -132,6 +159,103 @@ impl HttpTransport {
             api_key,
         }
     }
+    
+    /// Validate CORS configuration for security
+    ///
+    /// Ensures that production deployments use strict CORS whitelisting
+    fn validate_cors_config(cors: &CorsConfig, is_production: bool) -> Result<()> {
+        if !cors.enabled {
+            return Ok(());
+        }
+        
+        if is_production {
+            // Production security checks
+            
+            // Reject wildcard origins
+            if cors.allowed_origins.iter().any(|o| o == "*") {
+                anyhow::bail!(
+                    "SECURITY ERROR: CORS wildcard (*) is not allowed in production mode. \
+                     Specify trusted origins explicitly in http.cors.allowed_origins"
+                );
+            }
+            
+            // Require at least one origin
+            if cors.allowed_origins.is_empty() {
+                anyhow::bail!(
+                    "SECURITY ERROR: No CORS origins configured for production. \
+                     Add trusted domains to http.cors.allowed_origins"
+                );
+            }
+            
+            // Validate all origins use HTTPS (except localhost for dev testing)
+            for origin in &cors.allowed_origins {
+                if !origin.starts_with("https://") 
+                    && !origin.starts_with("http://localhost")
+                    && !origin.starts_with("http://127.0.0.1") 
+                {
+                    anyhow::bail!(
+                        "SECURITY ERROR: CORS origin must use HTTPS in production: {}", 
+                        origin
+                    );
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Build CORS layer based on configuration
+    fn build_cors_layer(cors: &CorsConfig, is_production: bool) -> tower_http::cors::CorsLayer {
+        use tower_http::cors::{CorsLayer, Any};
+        use axum::http::{Method, header};
+        
+        let mut layer = CorsLayer::new()
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::OPTIONS,
+            ])
+            .allow_headers([
+                header::CONTENT_TYPE,
+                header::AUTHORIZATION,
+                axum::http::HeaderName::from_static("x-api-key"),
+            ])
+            .allow_credentials(true)
+            .max_age(std::time::Duration::from_secs(cors.max_age_secs));
+        
+        if !is_production && cors.allow_all_dev {
+            // Development mode: allow all origins for easier testing
+            tracing::warn!(
+                "CORS: Allowing all origins (DEVELOPMENT MODE ONLY - NOT SAFE FOR PRODUCTION)"
+            );
+            layer = layer.allow_origin(Any);
+        } else {
+            // Production mode: strict whitelist
+            let origins: Vec<_> = cors.allowed_origins
+                .iter()
+                .filter_map(|o| {
+                    match o.parse::<axum::http::HeaderValue>() {
+                        Ok(val) => {
+                            tracing::info!("CORS: Allowing origin: {}", o);
+                            Some(val)
+                        }
+                        Err(e) => {
+                            tracing::error!("CORS: Invalid origin '{}': {}", o, e);
+                            None
+                        }
+                    }
+                })
+                .collect();
+            
+            if origins.is_empty() {
+                tracing::warn!("CORS: No valid origins configured - CORS will reject all requests");
+            }
+            
+            layer = layer.allow_origin(origins);
+        }
+        
+        layer
+    }
 }
 
 impl Transport for HttpTransport {
@@ -154,6 +278,14 @@ impl HttpTransport {
     where
         S: MemoryStore + MemoirStore + Send + Sync + Clone + 'static,
     {
+        // Determine if running in production mode
+        let is_production = std::env::var("ALEJANDRIA_ENV")
+            .unwrap_or_else(|_| "development".to_string())
+            .to_lowercase() == "production";
+        
+        // Validate CORS configuration
+        Self::validate_cors_config(&self.config.cors, is_production)?;
+        
         // Initialize managers
         let connection_manager = Arc::new(RwLock::new(
             connection::ConnectionManager::new(self.config.connection_limits.clone())
@@ -183,8 +315,8 @@ impl HttpTransport {
         
         // Build router with routes
         // Middleware layers are applied in REVERSE order (last layer = outermost)
-        // Request flow: Body Limit -> Auth -> Rate Limit -> Input Validation -> Handler
-        let app = Router::new()
+        // Request flow: CORS -> Body Limit -> Auth -> Rate Limit -> Input Validation -> Handler
+        let mut app = Router::new()
             .route("/rpc", post(handlers::handle_rpc))
             .route("/events", get(handlers::handle_sse))
             .route("/health", get(handlers::handle_health))
@@ -204,8 +336,18 @@ impl HttpTransport {
                 self.config.max_request_size_bytes,
             ));
         
+        // Apply CORS layer if enabled
+        if self.config.cors.enabled {
+            let cors_layer = Self::build_cors_layer(&self.config.cors, is_production);
+            app = app.layer(cors_layer);
+            tracing::info!("CORS middleware enabled");
+        } else {
+            tracing::info!("CORS middleware disabled");
+        }
+        
         // Start server
         tracing::info!("Starting HTTP transport on {}", self.config.bind);
+        tracing::info!("Environment: {}", if is_production { "PRODUCTION" } else { "DEVELOPMENT" });
         
         let listener = tokio::net::TcpListener::bind(self.config.bind).await?;
         
@@ -250,7 +392,9 @@ mod tests {
         let config = HttpConfig::default();
         assert_eq!(config.request_timeout_secs, 60);
         assert_eq!(config.max_request_size_bytes, 1024 * 1024);
-        assert!(!config.cors_enabled);
+        assert!(!config.cors.enabled);
+        assert_eq!(config.cors.allowed_origins.len(), 0);
+        assert!(config.cors.allow_all_dev);
     }
 
     #[test]
@@ -260,5 +404,94 @@ mod tests {
         assert_eq!(limits.per_ip, 50);
         assert_eq!(limits.global, 1000);
         assert_eq!(limits.idle_timeout_secs, 300);
+    }
+    
+    #[test]
+    fn test_cors_validation_rejects_wildcard_in_production() {
+        let cors = CorsConfig {
+            enabled: true,
+            allowed_origins: vec!["*".to_string()],
+            allow_all_dev: false,
+            max_age_secs: 3600,
+        };
+        
+        let result = HttpTransport::validate_cors_config(&cors, true);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("wildcard"));
+    }
+    
+    #[test]
+    fn test_cors_validation_requires_origins_in_production() {
+        let cors = CorsConfig {
+            enabled: true,
+            allowed_origins: vec![],
+            allow_all_dev: false,
+            max_age_secs: 3600,
+        };
+        
+        let result = HttpTransport::validate_cors_config(&cors, true);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No CORS origins"));
+    }
+    
+    #[test]
+    fn test_cors_validation_requires_https_in_production() {
+        let cors = CorsConfig {
+            enabled: true,
+            allowed_origins: vec!["http://example.com".to_string()],
+            allow_all_dev: false,
+            max_age_secs: 3600,
+        };
+        
+        let result = HttpTransport::validate_cors_config(&cors, true);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("HTTPS"));
+    }
+    
+    #[test]
+    fn test_cors_validation_allows_localhost_http() {
+        let cors = CorsConfig {
+            enabled: true,
+            allowed_origins: vec![
+                "http://localhost:3000".to_string(),
+                "http://127.0.0.1:3000".to_string(),
+                "https://ar-appsec-01.veritran.net".to_string(),
+            ],
+            allow_all_dev: false,
+            max_age_secs: 3600,
+        };
+        
+        let result = HttpTransport::validate_cors_config(&cors, true);
+        assert!(result.is_ok());
+    }
+    
+    #[test]
+    fn test_cors_validation_passes_with_valid_https_origins() {
+        let cors = CorsConfig {
+            enabled: true,
+            allowed_origins: vec![
+                "https://ar-appsec-01.veritran.net".to_string(),
+                "https://admin.veritran.net".to_string(),
+            ],
+            allow_all_dev: false,
+            max_age_secs: 3600,
+        };
+        
+        let result = HttpTransport::validate_cors_config(&cors, true);
+        assert!(result.is_ok());
+    }
+    
+    #[test]
+    fn test_cors_validation_disabled_always_passes() {
+        let cors = CorsConfig {
+            enabled: false,
+            allowed_origins: vec!["*".to_string()],
+            allow_all_dev: false,
+            max_age_secs: 3600,
+        };
+        
+        // Should pass even with wildcard because CORS is disabled
+        let result = HttpTransport::validate_cors_config(&cors, true);
+        assert!(result.is_ok());
     }
 }

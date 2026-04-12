@@ -15,6 +15,10 @@ pub enum IcmError {
         value: String,
     },
 
+    /// Simple not found variant for single message
+    #[error("Not found: {0}")]
+    NotFoundSimple(String),
+
     #[error("Already exists: {0}")]
     AlreadyExists(String),
 
@@ -32,6 +36,10 @@ pub enum IcmError {
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+
+    /// Authorization error - access denied (BOLA protection)
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
 }
 
 /// Result type alias using IcmError

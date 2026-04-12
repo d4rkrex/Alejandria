@@ -41,7 +41,9 @@ fn run_stdio_mode(db_path: String) -> Result<()> {
 /// Run in HTTP mode
 #[cfg(feature = "http-transport")]
 fn run_http_mode(db_path: String, bind: Option<String>) -> Result<()> {
-    use alejandria_mcp::transport::http::{ConnectionLimits, HttpConfig, HttpTransport};
+    use alejandria_mcp::transport::http::{
+        ConnectionLimits, CorsConfig, HttpConfig, HttpTransport,
+    };
     use std::net::SocketAddr;
     use uuid::Uuid;
 
@@ -60,11 +62,47 @@ fn run_http_mode(db_path: String, bind: Option<String>) -> Result<()> {
         .and_then(|id| Uuid::parse_str(&id).ok())
         .unwrap_or_else(Uuid::new_v4);
 
+    // Load CORS configuration from environment
+    let cors_enabled = env::var("ALEJANDRIA_CORS_ENABLED")
+        .ok()
+        .and_then(|v| v.parse::<bool>().ok())
+        .unwrap_or(false);
+
+    let cors_origins: Vec<String> = env::var("ALEJANDRIA_CORS_ORIGINS")
+        .ok()
+        .map(|origins| origins.split(',').map(|s| s.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    let is_production = env::var("ALEJANDRIA_ENV")
+        .unwrap_or_else(|_| "development".to_string())
+        .to_lowercase()
+        == "production";
+
     eprintln!("Starting Alejandria HTTP server...");
     eprintln!("Database: {}", db_path);
     eprintln!("Bind address: {}", bind_addr);
     eprintln!("Instance ID: {}", instance_id);
+    eprintln!(
+        "Environment: {}",
+        if is_production {
+            "PRODUCTION"
+        } else {
+            "DEVELOPMENT"
+        }
+    );
     eprintln!("TLS: disabled (use Nginx reverse proxy for TLS)");
+    eprintln!(
+        "CORS: {}",
+        if cors_enabled {
+            if cors_origins.is_empty() {
+                "enabled (allow all in dev mode)".to_string()
+            } else {
+                format!("enabled ({} origins)", cors_origins.len())
+            }
+        } else {
+            "disabled".to_string()
+        }
+    );
     eprintln!();
 
     // Configure HTTP transport
@@ -72,7 +110,12 @@ fn run_http_mode(db_path: String, bind: Option<String>) -> Result<()> {
         bind: bind_addr,
         request_timeout_secs: 60,
         max_request_size_bytes: 1024 * 1024, // 1MB
-        cors_enabled: false,
+        cors: CorsConfig {
+            enabled: cors_enabled,
+            allowed_origins: cors_origins,
+            allow_all_dev: !is_production,
+            max_age_secs: 3600,
+        },
         connection_limits: ConnectionLimits::default(),
     };
 
