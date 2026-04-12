@@ -229,6 +229,71 @@ impl Default for ImportWizardState {
     }
 }
 
+/// Smart scroll state with auto-adjust capability.
+/// Implements scroll behavior that follows cursor and respects bounds.
+#[derive(Debug, Clone)]
+struct ScrollState {
+    /// Current scroll offset (first visible line)
+    offset: usize,
+    /// Total number of lines in content
+    total_lines: usize,
+    /// Number of visible lines in viewport
+    visible_lines: usize,
+}
+
+impl ScrollState {
+    /// Create new scroll state with given dimensions
+    fn new(total_lines: usize, visible_lines: usize) -> Self {
+        Self {
+            offset: 0,
+            total_lines,
+            visible_lines,
+        }
+    }
+
+    /// Update dimensions (call on terminal resize or content change)
+    fn update_dimensions(&mut self, total_lines: usize, visible_lines: usize) {
+        self.total_lines = total_lines;
+        self.visible_lines = visible_lines;
+        self.clamp_offset();
+    }
+
+    /// Calculate maximum valid scroll offset
+    fn max_offset(&self) -> usize {
+        self.total_lines.saturating_sub(self.visible_lines)
+    }
+
+    /// Ensure offset is within valid range
+    fn clamp_offset(&mut self) {
+        self.offset = self.offset.min(self.max_offset());
+    }
+
+    /// Scroll down by one line
+    fn scroll_down(&mut self) {
+        self.offset = self.offset.saturating_add(1).min(self.max_offset());
+    }
+
+    /// Scroll up by one line
+    fn scroll_up(&mut self) {
+        self.offset = self.offset.saturating_sub(1);
+    }
+
+    /// Jump to top
+    fn go_to_top(&mut self) {
+        self.offset = 0;
+    }
+
+    /// Jump to bottom
+    fn go_to_bottom(&mut self) {
+        self.offset = self.max_offset();
+    }
+
+    /// Get current offset
+    fn offset(&self) -> usize {
+        self.offset
+    }
+}
+
 #[derive(Debug)]
 struct AppState {
     current_tab: Tab,
@@ -259,14 +324,10 @@ struct AppState {
     #[allow(dead_code)] // Future expansion for full wizard UI
     import_wizard_state: ImportWizardState,
 
-    // Help tab state
-    help_scroll_offset: usize,
-
-    // Stats tab state
-    stats_scroll_offset: usize,
-
-    // Activity log state
-    activity_scroll_offset: usize,
+    // Smart scroll states (replaces simple offsets)
+    help_scroll: ScrollState,
+    stats_scroll: ScrollState,
+    activity_scroll: ScrollState,
 
     // Theme state
     current_theme: Theme,
@@ -321,14 +382,10 @@ impl AppState {
             export_wizard_state: ExportWizardState::default(),
             import_wizard_state: ImportWizardState::default(),
 
-            // Help tab state
-            help_scroll_offset: 0,
-
-            // Stats tab state
-            stats_scroll_offset: 0,
-
-            // Activity log state
-            activity_scroll_offset: 0,
+            // Smart scroll states (initialized with reasonable defaults)
+            help_scroll: ScrollState::new(100, 30), // Will update on first render
+            stats_scroll: ScrollState::new(50, 30), // Will update on first render
+            activity_scroll: ScrollState::new(50, 30), // Will update on first render
 
             // Theme state
             current_theme: Theme::Default,
@@ -561,6 +618,18 @@ fn run_app(
     store: &SqliteStore,
 ) -> Result<()> {
     loop {
+        // Update scroll dimensions based on terminal size before rendering
+        let terminal_size = terminal.size()?;
+        let visible_lines = terminal_size.height.saturating_sub(6) as usize;
+
+        // Update scroll states for each tab
+        // Help tab has ~80 lines of content
+        app.help_scroll.update_dimensions(80, visible_lines);
+        // Stats tab content varies, estimate ~100 lines
+        app.stats_scroll.update_dimensions(100, visible_lines);
+        // Activity log varies, estimate ~50 lines (will be dynamic later)
+        app.activity_scroll.update_dimensions(50, visible_lines);
+
         terminal.draw(|f| ui(f, app))?;
 
         if let Event::Key(key) = event::read()? {
@@ -638,14 +707,13 @@ fn run_app(
                                 }
                             }
                             Tab::Help => {
-                                app.help_scroll_offset = app.help_scroll_offset.saturating_add(1);
+                                app.help_scroll.scroll_down();
                             }
                             Tab::Stats => {
-                                app.stats_scroll_offset = app.stats_scroll_offset.saturating_add(1);
+                                app.stats_scroll.scroll_down();
                             }
                             Tab::ActivityLog => {
-                                app.activity_scroll_offset =
-                                    app.activity_scroll_offset.saturating_add(1);
+                                app.activity_scroll.scroll_down();
                             }
                             _ => {}
                         },
@@ -659,33 +727,30 @@ fn run_app(
                                 }
                             }
                             Tab::Help => {
-                                app.help_scroll_offset = app.help_scroll_offset.saturating_sub(1);
+                                app.help_scroll.scroll_up();
                             }
                             Tab::Stats => {
-                                app.stats_scroll_offset = app.stats_scroll_offset.saturating_sub(1);
+                                app.stats_scroll.scroll_up();
                             }
                             Tab::ActivityLog => {
-                                app.activity_scroll_offset =
-                                    app.activity_scroll_offset.saturating_sub(1);
+                                app.activity_scroll.scroll_up();
                             }
                             _ => {}
                         },
                         (KeyCode::Char('g'), _) => match app.current_tab {
                             Tab::ApiKeys => app.first_key(),
-                            Tab::Help => app.help_scroll_offset = 0,
-                            Tab::Stats => app.stats_scroll_offset = 0,
-                            Tab::ActivityLog => app.activity_scroll_offset = 0,
+                            Tab::Help => app.help_scroll.go_to_top(),
+                            Tab::Stats => app.stats_scroll.go_to_top(),
+                            Tab::ActivityLog => app.activity_scroll.go_to_top(),
                             _ => {}
                         },
-                        (KeyCode::Char('G'), KeyModifiers::SHIFT) => {
-                            match app.current_tab {
-                                Tab::ApiKeys => app.last_key(),
-                                Tab::Help => app.help_scroll_offset = 100, // Large number for max scroll
-                                Tab::Stats => app.stats_scroll_offset = 100,
-                                Tab::ActivityLog => app.activity_scroll_offset = 100,
-                                _ => {}
-                            }
-                        }
+                        (KeyCode::Char('G'), KeyModifiers::SHIFT) => match app.current_tab {
+                            Tab::ApiKeys => app.last_key(),
+                            Tab::Help => app.help_scroll.go_to_bottom(),
+                            Tab::Stats => app.stats_scroll.go_to_bottom(),
+                            Tab::ActivityLog => app.activity_scroll.go_to_bottom(),
+                            _ => {}
+                        },
 
                         // Page navigation for Memories tab
                         (KeyCode::PageDown, _) if app.current_tab == Tab::Memories => {
@@ -1086,18 +1151,28 @@ fn ui(f: &mut Frame, app: &AppState) {
         .split(f.size());
 
     // Render tabs
+    let version = env!("CARGO_PKG_VERSION");
     let titles = Tab::titles();
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Alejandria Admin"),
+                .title(format!(
+                    "Alejandria Admin v{} | Theme: {} | Ctrl+T to change",
+                    version,
+                    app.current_theme.name()
+                ))
+                .title_style(
+                    Style::default()
+                        .fg(app.current_theme.primary_color())
+                        .add_modifier(Modifier::BOLD),
+                ),
         )
         .select(app.current_tab as usize)
         .style(Style::default().fg(Color::White))
         .highlight_style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(app.current_theme.secondary_color())
                 .add_modifier(Modifier::BOLD),
         );
     f.render_widget(tabs, chunks[0]);
@@ -1551,7 +1626,7 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
                         .add_modifier(Modifier::BOLD),
                 )),
         )
-        .scroll((app.stats_scroll_offset as u16, 0));
+        .scroll((app.stats_scroll.offset() as u16, 0));
 
     f.render_widget(stats_text, chunks[1]);
 }
@@ -2987,8 +3062,9 @@ fn render_help_tab(f: &mut Frame, app: &AppState, area: Rect) {
     ];
 
     let title = format!(
-        "Help & Documentation - Scroll: {}/~50",
-        app.help_scroll_offset
+        "Help & Documentation - Scroll: {}/{} (j/k or arrows to scroll, gg/G to jump)",
+        app.help_scroll.offset(),
+        app.help_scroll.max_offset()
     );
     let paragraph = Paragraph::new(help_lines)
         .block(
@@ -3002,8 +3078,191 @@ fn render_help_tab(f: &mut Frame, app: &AppState, area: Rect) {
                         .add_modifier(Modifier::BOLD),
                 )),
         )
-        .scroll((app.help_scroll_offset as u16, 0))
+        .scroll((app.help_scroll.offset() as u16, 0))
         .wrap(Wrap { trim: true });
 
     f.render_widget(paragraph, area);
+}
+
+// ========== TUI Unit Tests ==========
+
+#[cfg(test)]
+mod tui_tests {
+    use super::*;
+
+    // ========== ScrollState Tests (Core Logic) ==========
+
+    #[test]
+    fn test_scroll_state_new_initializes_correctly() {
+        let scroll = ScrollState::new(100, 30);
+
+        assert_eq!(scroll.offset(), 0, "Should start at offset 0");
+        assert_eq!(scroll.total_lines, 100);
+        assert_eq!(scroll.visible_lines, 30);
+    }
+
+    #[test]
+    fn test_scroll_state_max_offset_calculation() {
+        let scroll = ScrollState::new(100, 30);
+
+        // max_offset = total_lines - visible_lines = 100 - 30 = 70
+        assert_eq!(scroll.max_offset(), 70);
+    }
+
+    #[test]
+    fn test_scroll_state_max_offset_with_small_content() {
+        let scroll = ScrollState::new(10, 30);
+
+        // If content fits in viewport, max_offset should be 0
+        assert_eq!(scroll.max_offset(), 0);
+    }
+
+    #[test]
+    fn test_scroll_down_increments_offset() {
+        let mut scroll = ScrollState::new(100, 30);
+
+        scroll.scroll_down();
+        assert_eq!(scroll.offset(), 1);
+
+        scroll.scroll_down();
+        assert_eq!(scroll.offset(), 2);
+    }
+
+    #[test]
+    fn test_scroll_down_stops_at_max() {
+        let mut scroll = ScrollState::new(100, 30);
+        let max = scroll.max_offset();
+
+        // Scroll way beyond max
+        for _ in 0..200 {
+            scroll.scroll_down();
+        }
+
+        assert_eq!(scroll.offset(), max, "Should not exceed max_offset");
+    }
+
+    #[test]
+    fn test_scroll_up_decrements_offset() {
+        let mut scroll = ScrollState::new(100, 30);
+        scroll.scroll_down();
+        scroll.scroll_down();
+        scroll.scroll_down(); // offset = 3
+
+        scroll.scroll_up();
+        assert_eq!(scroll.offset(), 2);
+    }
+
+    #[test]
+    fn test_scroll_up_stops_at_zero() {
+        let mut scroll = ScrollState::new(100, 30);
+
+        // Try scrolling up when already at top
+        scroll.scroll_up();
+        assert_eq!(scroll.offset(), 0, "Should not go below 0");
+
+        scroll.scroll_up();
+        scroll.scroll_up();
+        assert_eq!(scroll.offset(), 0, "Should still be 0");
+    }
+
+    #[test]
+    fn test_go_to_top_resets_offset() {
+        let mut scroll = ScrollState::new(100, 30);
+        scroll.scroll_down();
+        scroll.scroll_down();
+        scroll.scroll_down(); // offset = 3
+
+        scroll.go_to_top();
+        assert_eq!(scroll.offset(), 0);
+    }
+
+    #[test]
+    fn test_go_to_bottom_jumps_to_max() {
+        let mut scroll = ScrollState::new(100, 30);
+
+        scroll.go_to_bottom();
+        assert_eq!(scroll.offset(), 70); // max_offset = 100 - 30
+    }
+
+    #[test]
+    fn test_update_dimensions_recalculates_max() {
+        let mut scroll = ScrollState::new(100, 30);
+        scroll.scroll_down();
+        scroll.scroll_down(); // offset = 2
+
+        // Simulate terminal resize
+        scroll.update_dimensions(50, 20); // total=50, visible=20
+
+        assert_eq!(scroll.total_lines, 50);
+        assert_eq!(scroll.visible_lines, 20);
+        assert_eq!(scroll.max_offset(), 30); // 50 - 20
+    }
+
+    #[test]
+    fn test_update_dimensions_clamps_offset_if_needed() {
+        let mut scroll = ScrollState::new(100, 30);
+
+        // Scroll to near bottom
+        for _ in 0..60 {
+            scroll.scroll_down();
+        }
+        let old_offset = scroll.offset();
+        assert!(old_offset > 20);
+
+        // Shrink content dramatically
+        scroll.update_dimensions(30, 20); // new max = 10
+
+        // Offset should be clamped to new max
+        assert_eq!(scroll.offset(), 10, "Should clamp to new max_offset");
+    }
+
+    #[test]
+    fn test_scroll_with_zero_content() {
+        let mut scroll = ScrollState::new(0, 30);
+
+        // Should handle empty content gracefully
+        assert_eq!(scroll.max_offset(), 0);
+        scroll.scroll_down();
+        assert_eq!(scroll.offset(), 0);
+        scroll.go_to_bottom();
+        assert_eq!(scroll.offset(), 0);
+    }
+
+    // ========== Edge Cases & Security ==========
+
+    #[test]
+    fn test_scroll_saturating_arithmetic() {
+        let mut scroll = ScrollState::new(usize::MAX, 100);
+
+        // Should not panic on extreme values
+        scroll.scroll_down();
+        assert!(scroll.offset() <= scroll.max_offset());
+    }
+
+    #[test]
+    fn test_scroll_handles_viewport_larger_than_content() {
+        let scroll = ScrollState::new(10, 100); // viewport > content
+
+        // Max offset should be 0 (content fits entirely)
+        assert_eq!(scroll.max_offset(), 0);
+    }
+
+    // ========== Integration with AppState ==========
+
+    #[test]
+    fn test_app_state_initializes_scroll_states() {
+        let app = AppState::new(vec![]);
+
+        // ScrollStates should be initialized (even with default dimensions)
+        assert_eq!(app.help_scroll.offset(), 0);
+        assert_eq!(app.stats_scroll.offset(), 0);
+        assert_eq!(app.activity_scroll.offset(), 0);
+    }
+
+    // ========== Future Tests (TODO) ==========
+
+    // TODO: Test actual keyboard navigation handlers (requires refactoring to testable functions)
+    // TODO: Test scroll behavior when switching tabs
+    // TODO: Test scroll persistence across tab switches
+    // TODO: Test scroll with dynamic content (memories list, activity log)
 }
