@@ -380,7 +380,7 @@ curl --cacert ~/repos/AppSec/Alejandria/certs/ca-cert.pem \
   --url https://ar-appsec-01.veritran.net:8443 \
   --api-key alejandria-prod-initial-key-2026 \
   --ca-cert ~/.alejandria/ca-cert.pem \
-  store --content "Test TLS funcionando" --topic "test-tls"
+  store "Test TLS funcionando" --topic "test-tls"
 
 # 8.4 Test recuperar memory
 /home/mroldan/.local/bin/alejandria \
