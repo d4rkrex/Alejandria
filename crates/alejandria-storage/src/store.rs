@@ -370,7 +370,7 @@ impl SqliteStore {
                     m.topic, m.summary, m.raw_excerpt, m.keywords,
                     m.importance, m.source, m.related_ids,
                     m.topic_key, m.revision_count, m.duplicate_count, m.last_seen_at, m.deleted_at,
-                    m.decay_profile, m.decay_params,
+                    m.decay_profile, m.decay_params, m.owner_key_hash,
                     bm25(fts.memories_fts, 1.0, 0.5) as score
                 FROM memories_fts fts
                 INNER JOIN memories m ON fts.rowid = m.rowid
@@ -427,8 +427,9 @@ impl SqliteStore {
                             .get::<_, Option<String>>(19)?
                             .and_then(|s| serde_json::from_str(&s).ok()),
                         embedding: None,
+                        owner_key_hash: row.get(20)?,
                     };
-                    let score: f32 = row.get(20)?;
+                    let score: f32 = row.get(21)?;
                     Ok((memory, score))
                 })
                 .into_icm_result()?
@@ -472,7 +473,7 @@ impl SqliteStore {
                     m.topic, m.summary, m.raw_excerpt, m.keywords,
                     m.importance, m.source, m.related_ids,
                     m.topic_key, m.revision_count, m.duplicate_count, m.last_seen_at, m.deleted_at,
-                    m.decay_profile, m.decay_params,
+                    m.decay_profile, m.decay_params, m.owner_key_hash,
                     vec_distance_cosine(v.embedding, ?1) as distance
                 FROM vec_memories v
                 INNER JOIN memories m ON v.memory_id = m.id
@@ -529,8 +530,9 @@ impl SqliteStore {
                             .get::<_, Option<String>>(19)?
                             .and_then(|s| serde_json::from_str(&s).ok()),
                         embedding: None,
+                        owner_key_hash: row.get(20)?,
                     };
-                    let distance: f32 = row.get(20)?;
+                    let distance: f32 = row.get(21)?;
                     Ok((memory, distance))
                 })
                 .into_icm_result()?
@@ -809,6 +811,224 @@ impl SqliteStore {
             .collect())
     }
 
+    // === BOLA Protection Methods ===
+
+    /// Authorize access to a memory by checking ownership.
+    ///
+    /// Returns Ok(()) if access is authorized, Err(IcmError::Forbidden) if denied.
+    ///
+    /// Access is granted if ANY of these conditions are met:
+    /// - The requester owns the memory (owner_key_hash matches requester_hash)
+    /// - The memory is shared (owner_key_hash = "SHARED")
+    /// - The memory is legacy (owner_key_hash = "LEGACY_SYSTEM")
+    ///
+    /// # Arguments
+    ///
+    /// * `memory_id` - The memory ID to authorize access for
+    /// * `requester_hash` - SHA-256 hash of the requester's API key
+    ///
+    /// # Security
+    ///
+    /// - Logs authorization failures for security monitoring
+    /// - Does NOT leak ownership information in error messages
+    /// - Uses constant-time comparison would be ideal but not critical here (owner hashes are public within a tenant)
+    fn authorize_access(&self, memory_id: &str, requester_hash: &str) -> IcmResult<()> {
+        self.with_conn(|conn| {
+            let owner_hash: String = conn
+                .query_row(
+                    "SELECT owner_key_hash FROM memories WHERE id = ? AND deleted_at IS NULL",
+                    rusqlite::params![memory_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .into_icm_result()?
+                .ok_or_else(|| {
+                    IcmError::NotFoundSimple(format!("Memory not found: {}", memory_id))
+                })?;
+
+            // Check if access is authorized
+            if owner_hash == requester_hash
+                || owner_hash == "SHARED"
+                || owner_hash == "LEGACY_SYSTEM"
+            {
+                Ok(())
+            } else {
+                // Log authorization failure for security monitoring
+                eprintln!(
+                    "[SECURITY] BOLA blocked: requester {} attempted to access memory {} (owner: {})",
+                    &requester_hash[..8], // Log only first 8 chars for privacy
+                    memory_id,
+                    &owner_hash[..8]
+                );
+
+                Err(IcmError::Forbidden(format!(
+                    "Access denied to memory {}",
+                    memory_id
+                )))
+            }
+        })
+    }
+
+    /// Get memory with authorization check.
+    ///
+    /// Same as `get()` but with ownership verification.
+    pub fn get_authorized(
+        &self,
+        id: &str,
+        requester_hash: &str,
+    ) -> IcmResult<Option<alejandria_core::memory::Memory>> {
+        // First authorize access
+        self.authorize_access(id, requester_hash)?;
+
+        // Then get the memory
+        self.get(id)
+    }
+
+    /// Update memory with authorization check.
+    ///
+    /// Same as `update()` but with ownership verification.
+    ///
+    /// IMPORTANT: This prevents users from changing the owner_key_hash field
+    /// by preserving the existing value from the database.
+    pub fn update_authorized(
+        &self,
+        memory: &alejandria_core::memory::Memory,
+        requester_hash: &str,
+    ) -> IcmResult<()> {
+        // First authorize access
+        self.authorize_access(&memory.id, requester_hash)?;
+
+        // Then update the memory
+        self.update(memory.clone())
+    }
+
+    /// Delete memory with authorization check.
+    ///
+    /// Same as `delete()` but with ownership verification.
+    pub fn delete_authorized(&self, id: &str, requester_hash: &str) -> IcmResult<()> {
+        // First authorize access
+        self.authorize_access(id, requester_hash)?;
+
+        // Then delete the memory
+        self.delete(id)
+    }
+
+    /// Search memories by keywords with authorization (filters by owner).
+    ///
+    /// Only returns memories that are:
+    /// - Owned by the requester
+    /// - Shared (SHARED)
+    /// - Legacy (LEGACY_SYSTEM)
+    pub fn search_by_keywords_authorized(
+        &self,
+        query: &str,
+        limit: usize,
+        requester_hash: &str,
+    ) -> IcmResult<Vec<alejandria_core::memory::Memory>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT
+                    m.id, m.created_at, m.updated_at, m.last_accessed, m.access_count, m.weight,
+                    m.topic, m.summary, m.raw_excerpt, m.keywords,
+                    m.importance, m.source, m.related_ids,
+                    m.topic_key, m.revision_count, m.duplicate_count, m.last_seen_at, m.deleted_at,
+                    m.decay_profile, m.decay_params,
+                    bm25(fts.memories_fts, 1.0, 0.5) as score
+                FROM memories_fts fts
+                INNER JOIN memories m ON fts.rowid = m.rowid
+                WHERE fts.memories_fts MATCH ?1 
+                  AND m.deleted_at IS NULL
+                  AND (m.owner_key_hash = ?2 OR m.owner_key_hash = 'SHARED' OR m.owner_key_hash = 'LEGACY_SYSTEM')
+                ORDER BY score ASC
+                LIMIT ?3",
+                )
+                .into_icm_result()?;
+
+            let results = stmt
+                .query_map(
+                    rusqlite::params![query, requester_hash, limit],
+                    |row| {
+                        let memory = alejandria_core::memory::Memory {
+                            id: row.get(0)?,
+                            created_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+                                row.get(1)?,
+                            )
+                            .unwrap_or_default(),
+                            updated_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+                                row.get(2)?,
+                            )
+                            .unwrap_or_default(),
+                            last_accessed: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+                                row.get(3)?,
+                            )
+                            .unwrap_or_default(),
+                            access_count: row.get(4)?,
+                            weight: row.get(5)?,
+                            topic: row.get(6)?,
+                            summary: row.get(7)?,
+                            raw_excerpt: row.get(8)?,
+                            keywords: serde_json::from_str(&row.get::<_, String>(9)?)
+                                .unwrap_or_default(),
+                            importance: row
+                                .get::<_, String>(10)?
+                                .parse()
+                                .unwrap_or(alejandria_core::memory::Importance::Medium),
+                            source: serde_json::from_str(&row.get::<_, String>(11)?)
+                                .unwrap_or(alejandria_core::memory::MemorySource::User),
+                            related_ids: serde_json::from_str(&row.get::<_, String>(12)?)
+                                .unwrap_or_default(),
+                            topic_key: row.get(13)?,
+                            revision_count: row.get(14)?,
+                            duplicate_count: row.get(15)?,
+                            last_seen_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+                                row.get(16)?,
+                            )
+                            .unwrap_or_default(),
+                            deleted_at: row
+                                .get::<_, Option<i64>>(17)?
+                                .and_then(chrono::DateTime::<chrono::Utc>::from_timestamp_millis),
+                            decay_profile: row.get(18)?,
+                            decay_params: row
+                                .get::<_, Option<String>>(19)?
+                                .and_then(|s| serde_json::from_str(&s).ok()),
+                            embedding: None,
+                            owner_key_hash: String::new(), // Will be set by caller if needed
+                        };
+                        Ok(memory)
+                    },
+                )
+                .into_icm_result()?
+                .collect::<Result<Vec<_>, _>>()
+                .into_icm_result()?;
+
+            Ok(results)
+        })
+    }
+
+    /// Store memory with explicit owner.
+    ///
+    /// This is the authorized version of `store()` that accepts an owner_key_hash parameter.
+    /// Use this for all new memory creation to ensure BOLA protection from day 1.
+    ///
+    /// # Arguments
+    ///
+    /// * `memory` - The memory to store
+    /// * `owner_key_hash` - SHA-256 hash of the owner's API key, OR:
+    ///   - "SHARED" for system-wide shared memories
+    ///   - "LEGACY_SYSTEM" for backward compatibility (not recommended for new memories)
+    pub fn store_with_owner(
+        &self,
+        mut memory: alejandria_core::memory::Memory,
+        owner_key_hash: &str,
+    ) -> IcmResult<String> {
+        // Set the owner
+        memory.owner_key_hash = owner_key_hash.to_string();
+
+        // Use the existing store() method which now includes owner_key_hash
+        self.store(memory)
+    }
+
     /// Full-text search with LIKE fallback for empty results or special characters.
     ///
     /// This method provides a last-resort search when FTS5 fails or returns no results:
@@ -875,7 +1095,7 @@ impl SqliteStore {
                     topic, summary, raw_excerpt, keywords,
                     importance, source, related_ids,
                     topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,
-                    decay_profile, decay_params
+                    decay_profile, decay_params, owner_key_hash
                 FROM memories
                 WHERE deleted_at IS NULL
                   AND (summary LIKE ?1 OR raw_excerpt LIKE ?1)
@@ -929,6 +1149,7 @@ impl SqliteStore {
                         decay_params: row
                             .get::<_, Option<String>>(19)?
                             .and_then(|s| serde_json::from_str(&s).ok()),
+                        owner_key_hash: row.get(20)?,
                         embedding: None,
                     })
                 })
@@ -994,7 +1215,7 @@ impl SqliteStore {
                 topic, summary, raw_excerpt, keywords,
                 importance, source, related_ids,
                 topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,
-                decay_profile, decay_params
+                decay_profile, decay_params, owner_key_hash
             FROM memories
             WHERE 1=1",
         );
@@ -1045,7 +1266,7 @@ impl SqliteStore {
 
         // Count total matching records
         let count_query = query.replace(
-            "SELECT\n                id, created_at, updated_at, last_accessed, access_count, weight,\n                topic, summary, raw_excerpt, keywords,\n                importance, source, related_ids,\n                topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,\n                decay_profile, decay_params",
+            "SELECT\n                id, created_at, updated_at, last_accessed, access_count, weight,\n                topic, summary, raw_excerpt, keywords,\n                importance, source, related_ids,\n                topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,\n                decay_profile, decay_params, owner_key_hash",
             "SELECT COUNT(*)"
         );
 
@@ -1158,6 +1379,7 @@ impl SqliteStore {
                                 .get::<_, Option<String>>(19)?
                                 .and_then(|s| serde_json::from_str(&s).ok()),
                             embedding: None, // Don't include embeddings in export (large)
+                            owner_key_hash: row.get(20)?,
                         })
                     })
                     .into_icm_result()?
@@ -1336,18 +1558,20 @@ impl MemoryStore for SqliteStore {
             memory.last_accessed = now;
             memory.last_seen_at = now;
 
-            // Insert new memory
+            // Insert new memory (with owner_key_hash for BOLA protection)
             conn.execute(
                 "INSERT INTO memories (
                     id, created_at, updated_at, last_accessed, access_count, weight,
                     topic, summary, raw_excerpt, keywords,
                     importance, source, related_ids,
-                    topic_key, revision_count, duplicate_count, last_seen_at, deleted_at
+                    topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,
+                    owner_key_hash
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6,
                     ?7, ?8, ?9, ?10,
                     ?11, ?12, ?13,
-                    ?14, ?15, ?16, ?17, ?18
+                    ?14, ?15, ?16, ?17, ?18,
+                    ?19
                 )",
                 rusqlite::params![
                     memory.id,
@@ -1369,6 +1593,12 @@ impl MemoryStore for SqliteStore {
                     memory.duplicate_count,
                     memory.last_seen_at.timestamp_millis(),
                     memory.deleted_at.map(|dt| dt.timestamp_millis()),
+                    // BOLA protection: Set owner (default to LEGACY_SYSTEM if not set)
+                    if memory.owner_key_hash.is_empty() {
+                        "LEGACY_SYSTEM"
+                    } else {
+                        &memory.owner_key_hash
+                    },
                 ],
             )
             .into_icm_result()?;
@@ -1401,7 +1631,7 @@ impl MemoryStore for SqliteStore {
                         topic, summary, raw_excerpt, keywords,
                         importance, source, related_ids,
                         topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,
-                        decay_profile, decay_params
+                        decay_profile, decay_params, owner_key_hash
                     FROM memories
                     WHERE id = ? AND deleted_at IS NULL",
                     rusqlite::params![id],
@@ -1450,6 +1680,7 @@ impl MemoryStore for SqliteStore {
                                 .get::<_, Option<String>>(19)?
                                 .and_then(|s| serde_json::from_str(&s).ok()),
                             embedding: None, // Loaded below from vec_memories
+                            owner_key_hash: row.get(20)?,
                         })
                     },
                 )
@@ -1729,7 +1960,7 @@ impl MemoryStore for SqliteStore {
                     topic, summary, raw_excerpt, keywords,
                     importance, source, related_ids,
                     topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,
-                    decay_profile, decay_params
+                    decay_profile, decay_params, owner_key_hash
                 FROM memories 
                 WHERE deleted_at IS NULL"
             ).into_icm_result()?;
@@ -1779,6 +2010,7 @@ impl MemoryStore for SqliteStore {
                         decay_params: row.get::<_, Option<String>>(19)?
                             .and_then(|s| serde_json::from_str(&s).ok()),
                         embedding: None,
+                        owner_key_hash: row.get(20)?,
                     })
                 })
                 .into_icm_result()?
@@ -1864,7 +2096,7 @@ impl MemoryStore for SqliteStore {
                     topic, summary, raw_excerpt, keywords,
                     importance, source, related_ids,
                     topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,
-                    decay_profile, decay_params
+                    decay_profile, decay_params, owner_key_hash
                 FROM memories
                 WHERE topic = ?1 AND deleted_at IS NULL
                 ORDER BY created_at DESC",
@@ -1924,6 +2156,7 @@ impl MemoryStore for SqliteStore {
                         decay_params: row
                             .get::<_, Option<String>>(19)?
                             .and_then(|s| serde_json::from_str(&s).ok()),
+                        owner_key_hash: row.get(20)?,
                         embedding: None,
                     })
                 })
@@ -1996,6 +2229,7 @@ impl MemoryStore for SqliteStore {
                                 .get::<_, Option<String>>(19)?
                                 .and_then(|s| serde_json::from_str(&s).ok()),
                             embedding: None,
+                            owner_key_hash: row.get(20)?,
                         })
                     },
                 )
@@ -2538,29 +2772,29 @@ mod tests {
         store.with_conn(|conn| {
             // Memory with exponential decay (default)
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem1', ?1, ?1, ?1, 5, 1.0, 'test', 'Exponential memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem1', 1, 0, ?1, NULL, NULL, '{}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem1', ?1, ?1, ?1, 5, 1.0, 'test', 'Exponential memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem1', 1, 0, ?1, NULL, NULL, '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             
             // Memory with spaced repetition
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem2', ?1, ?1, ?1, 3, 1.0, 'test', 'SM-2 memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem2', 1, 0, ?1, NULL, 'spaced-repetition', '{\"interval_days\":1.0,\"easiness_factor\":2.5}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem2', ?1, ?1, ?1, 3, 1.0, 'test', 'SM-2 memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem2', 1, 0, ?1, NULL, 'spaced-repetition', '{\"interval_days\":1.0,\"easiness_factor\":2.5}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             
             // Memory with importance-weighted decay
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem3', ?1, ?1, ?1, 8, 1.0, 'test', 'Importance memory', 'excerpt', '[]', 'high', '\"User\"', '[]', 'test/mem3', 1, 0, ?1, NULL, 'importance-weighted', '{}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem3', ?1, ?1, ?1, 8, 1.0, 'test', 'Importance memory', 'excerpt', '[]', 'high', '\"User\"', '[]', 'test/mem3', 1, 0, ?1, NULL, 'importance-weighted', '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             
             // Memory with context-sensitive decay
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem4', ?1, ?1, ?1, 2, 1.0, 'architecture', 'Architecture memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem4', 1, 0, ?1, NULL, 'context-sensitive', '{}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem4', ?1, ?1, ?1, 2, 1.0, 'architecture', 'Architecture memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem4', 1, 0, ?1, NULL, 'context-sensitive', '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             
@@ -2613,15 +2847,15 @@ mod tests {
         store.with_conn(|conn| {
             // Insert memory with NULL decay_profile (old format)
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem_null', ?1, ?1, ?1, 3, 1.0, 'test', 'Legacy memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_null', 1, 0, ?1, NULL, NULL, '{}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem_null', ?1, ?1, ?1, 3, 1.0, 'test', 'Legacy memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_null', 1, 0, ?1, NULL, NULL, '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             
             // Insert memory with empty string profile
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem_empty', ?1, ?1, ?1, 3, 1.0, 'test', 'Empty profile memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_empty', 1, 0, ?1, NULL, '', '{}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem_empty', ?1, ?1, ?1, 3, 1.0, 'test', 'Empty profile memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_empty', 1, 0, ?1, NULL, '', '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             
@@ -2660,15 +2894,15 @@ mod tests {
         store.with_conn(|conn| {
             // Insert critical memory (very old)
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem_crit', ?1, ?1, ?1, 1, 1.0, 'test', 'Critical memory', 'excerpt', '[]', 'critical', '\"User\"', '[]', 'test/mem_crit', 1, 0, ?1, NULL, NULL, '{}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem_crit', ?1, ?1, ?1, 1, 1.0, 'test', 'Critical memory', 'excerpt', '[]', 'critical', '\"User\"', '[]', 'test/mem_crit', 1, 0, ?1, NULL, NULL, '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             
             // Insert medium memory for comparison
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem_med', ?1, ?1, ?1, 1, 1.0, 'test', 'Medium memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_med', 1, 0, ?1, NULL, NULL, '{}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem_med', ?1, ?1, ?1, 1, 1.0, 'test', 'Medium memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_med', 1, 0, ?1, NULL, NULL, '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             
@@ -2720,8 +2954,8 @@ mod tests {
         store.with_conn(|conn| {
             // Insert SM-2 memory with initial params (repetitions=0, interval=1.0)
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem_sm2', ?1, ?1, ?1, 5, 1.0, 'test', 'SM-2 memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_sm2', 1, 0, ?1, NULL, 'spaced-repetition', '{\"interval_days\":1.0,\"easiness_factor\":2.5,\"repetitions\":0}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem_sm2', ?1, ?1, ?1, 5, 1.0, 'test', 'SM-2 memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_sm2', 1, 0, ?1, NULL, 'spaced-repetition', '{\"interval_days\":1.0,\"easiness_factor\":2.5,\"repetitions\":0}', 'LEGACY_SYSTEM')",
                 rusqlite::params![review_time]
             ).into_icm_result()?;
             
@@ -2774,8 +3008,8 @@ mod tests {
         store.with_conn(|conn| {
             // Insert memory with unknown profile
             conn.execute(
-                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params)
-                 VALUES ('mem_unknown', ?1, ?1, ?1, 3, 1.0, 'test', 'Unknown profile memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_unknown', 1, 0, ?1, NULL, 'totally-fake-strategy', '{}')",
+                "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
+                 VALUES ('mem_unknown', ?1, ?1, ?1, 3, 1.0, 'test', 'Unknown profile memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_unknown', 1, 0, ?1, NULL, 'totally-fake-strategy', '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
             

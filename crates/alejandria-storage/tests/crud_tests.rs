@@ -38,6 +38,7 @@ fn create_test_memory(topic: &str, summary: &str) -> Memory {
         deleted_at: None,
         decay_profile: None,
         decay_params: None,
+        owner_key_hash: String::new(), // Will default to LEGACY_SYSTEM in storage
     }
 }
 

@@ -294,6 +294,7 @@ mod tests {
             deleted_at: None,
             decay_profile: None,
             decay_params: None,
+            owner_key_hash: "LEGACY_SYSTEM".to_string(),
         }
     }
 

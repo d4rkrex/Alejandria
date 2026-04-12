@@ -344,6 +344,7 @@ mod tests {
             deleted_at: None,
             decay_profile: Some("exponential".to_string()),
             decay_params: None,
+            owner_key_hash: "LEGACY_SYSTEM".to_string(),
         }
     }
 

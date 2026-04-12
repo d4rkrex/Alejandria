@@ -17,6 +17,7 @@ fn create_test_memory(id: &str, topic: &str, summary: &str, importance: Importan
     memory.raw_excerpt = Some(format!("Content for {}", summary));
     // Use unique keywords per memory to avoid deduplication
     memory.keywords = vec![format!("test-{}", id)];
+    memory.owner_key_hash = String::new(); // Will default to LEGACY_SYSTEM in storage
     memory
 }
 

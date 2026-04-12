@@ -507,11 +507,15 @@ mod tests {
 
         apply_migrations(&conn).unwrap();
 
-        // Current version should be 2 (after both migrations)
+        // Current version should be 3 (after all three migrations)
         let current = get_current_version(&conn).unwrap();
-        assert_eq!(current, 2);
+        assert_eq!(current, 3);
 
-        // First rollback migration 2 - this should succeed
+        // First rollback migration 3 - this should succeed
+        let new_version = rollback_migration(&conn).unwrap();
+        assert_eq!(new_version, 2);
+
+        // Rollback migration 2 - this should succeed
         let new_version = rollback_migration(&conn).unwrap();
         assert_eq!(new_version, 1);
 

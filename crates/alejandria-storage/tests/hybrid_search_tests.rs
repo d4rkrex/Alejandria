@@ -39,6 +39,7 @@ fn create_test_memory(topic: &str, summary: &str) -> Memory {
         embedding: None,
         decay_profile: None,
         decay_params: None,
+        owner_key_hash: "LEGACY_SYSTEM".to_string(),
     }
 }
 
