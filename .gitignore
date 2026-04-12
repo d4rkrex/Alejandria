@@ -37,3 +37,27 @@ inspirations/icm/
 # Build artifacts
 examples/python/__pycache__/
 examples/go/example_*
+
+# ========================================
+# Certificados TLS - Claves Privadas
+# ========================================
+# CRÍTICO: NUNCA versionar claves privadas
+# Solo versionar certificados públicos (.pem, .crt)
+
+# Claves privadas (archivos individuales)
+ca-key.pem
+server-key.pem
+*-key.pem
+*.key
+
+# Directorio de certificados privados
+certs-private/
+
+# Archivos de claves con extensiones comunes
+*.key.pem
+*.private.pem
+*.priv
+
+# CSR files (pueden contener info sensible)
+*.csr
+*.req
