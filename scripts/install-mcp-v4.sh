@@ -7,8 +7,17 @@ set -euo pipefail
 
 VERSION="${ALEJANDRIA_VERSION:-latest}"
 INSTALL_DIR="${ALEJANDRIA_INSTALL_DIR:-$HOME/.local/bin}"
-GITHUB_REPO="${GITHUB_REPO:-mroldan/alejandria}"
+GITLAB_PROJECT="${GITLAB_PROJECT:-appsec/alejandria}"
+GITLAB_HOST="${GITLAB_HOST:-gitlab.veritran.net}"
+GITHUB_REPO="${GITHUB_REPO:-}"  # Fallback for public GitHub mirrors
 FORCE_BUILD="${FORCE_BUILD:-false}"
+
+# Determine source (prefer GitLab for Veritran internal use)
+if [ -n "$GITHUB_REPO" ]; then
+    SOURCE_TYPE="github"
+else
+    SOURCE_TYPE="gitlab"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -52,17 +61,36 @@ detect_platform() {
     echo "$target"
 }
 
-# Get latest release version from GitHub
+# Get latest release version from GitLab or GitHub
 get_latest_version() {
-    local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+    local api_url
     
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$api_url" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO- "$api_url" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+    if [ "$SOURCE_TYPE" = "gitlab" ]; then
+        # GitLab API: get latest tag
+        local project_path_encoded=$(echo "$GITLAB_PROJECT" | sed 's/\//%2F/g')
+        api_url="https://${GITLAB_HOST}/api/v4/projects/${project_path_encoded}/repository/tags"
+        
+        if command -v curl >/dev/null 2>&1; then
+            # Get first tag from array and extract name field
+            curl -fsSL "$api_url" | grep -m 1 '"name":' | sed -E 's/.*"name":\s*"([^"]+)".*/\1/'
+        elif command -v wget >/dev/null 2>&1; then
+            wget -qO- "$api_url" | grep -m 1 '"name":' | sed -E 's/.*"name":\s*"([^"]+)".*/\1/'
+        else
+            log_error "Neither curl nor wget found. Please install one of them."
+            return 1
+        fi
     else
-        log_error "Neither curl nor wget found. Please install one of them."
-        return 1
+        # GitHub API: get latest release
+        api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+        
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL "$api_url" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+        elif command -v wget >/dev/null 2>&1; then
+            wget -qO- "$api_url" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+        else
+            log_error "Neither curl nor wget found. Please install one of them."
+            return 1
+        fi
     fi
 }
 
@@ -71,12 +99,22 @@ download_binary() {
     local version=$1
     local target=$2
     local archive_name="alejandria-${version}-${target}.tar.gz"
-    local download_url="https://github.com/${GITHUB_REPO}/releases/download/${version}/${archive_name}"
-    local checksum_url="${download_url}.sha256"
+    local download_url
+    local checksum_url
     local tmp_dir
     tmp_dir=$(mktemp -d)
+    
+    # Construct download URLs based on source type
+    if [ "$SOURCE_TYPE" = "gitlab" ]; then
+        local project_path_encoded=$(echo "$GITLAB_PROJECT" | sed 's/\//%2F/g')
+        download_url="https://${GITLAB_HOST}/api/v4/projects/${project_path_encoded}/packages/generic/alejandria/${version}/${archive_name}"
+        checksum_url="${download_url}.sha256"
+    else
+        download_url="https://github.com/${GITHUB_REPO}/releases/download/${version}/${archive_name}"
+        checksum_url="${download_url}.sha256"
+    fi
 
-    log_info "Downloading Alejandria ${version} for ${target}..."
+    log_info "Downloading Alejandria ${version} for ${target} from ${SOURCE_TYPE}..."
     
     # Download archive
     if command -v curl >/dev/null 2>&1; then
@@ -138,6 +176,14 @@ build_from_source() {
 
     # Clone or update repository
     local repo_dir="$HOME/.cache/alejandria-build"
+    local repo_url
+    
+    if [ "$SOURCE_TYPE" = "gitlab" ]; then
+        repo_url="https://${GITLAB_HOST}/${GITLAB_PROJECT}.git"
+    else
+        repo_url="https://github.com/${GITHUB_REPO}.git"
+    fi
+    
     if [ -d "$repo_dir" ]; then
         log_info "Updating existing repository..."
         cd "$repo_dir"
@@ -145,8 +191,8 @@ build_from_source() {
         git checkout main
         git pull
     else
-        log_info "Cloning repository..."
-        git clone "https://github.com/${GITHUB_REPO}.git" "$repo_dir"
+        log_info "Cloning repository from ${SOURCE_TYPE}..."
+        git clone "$repo_url" "$repo_dir"
         cd "$repo_dir"
     fi
 
