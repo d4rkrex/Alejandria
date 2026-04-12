@@ -30,7 +30,7 @@ After installation, verify it works:
 alejandria --version
 
 # Store a test memory
-alejandria store --content "First memory" --summary "Test memory"
+alejandria store "First memory" --summary "Test memory"
 
 # Recall it
 alejandria recall "test"
@@ -119,7 +119,7 @@ Always check Alejandria memory before starting new tasks.
 
 ```bash
 # Store memories
-alejandria store --content "Use TypeScript for new projects" --topic "preferences" --importance high
+alejandria store "Use TypeScript for new projects" --topic "preferences" --importance high
 
 # Recall memories
 alejandria recall "typescript"

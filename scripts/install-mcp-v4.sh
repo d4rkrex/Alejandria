@@ -731,7 +731,7 @@ main() {
     echo
     log_info "Quick verification:"
     echo "  alejandria --version"
-    echo "  alejandria store --content \"Test memory\" --summary \"Test\""
+    echo "  alejandria store \"Test memory\" --summary \"Test\""
     echo "  alejandria recall \"test\""
     
     echo
