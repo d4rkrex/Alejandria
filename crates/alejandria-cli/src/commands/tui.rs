@@ -38,6 +38,80 @@ use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 
+// Theme system for customizable UI colors
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Theme {
+    Default,
+    Dracula,
+    Nord,
+    Monokai,
+}
+
+impl Theme {
+    fn primary_color(&self) -> Color {
+        match self {
+            Theme::Default => Color::Cyan,
+            Theme::Dracula => Color::Rgb(139, 233, 253), // Cyan
+            Theme::Nord => Color::Rgb(136, 192, 208),    // Nord Frost
+            Theme::Monokai => Color::Rgb(102, 217, 239), // Monokai Cyan
+        }
+    }
+
+    fn secondary_color(&self) -> Color {
+        match self {
+            Theme::Default => Color::Yellow,
+            Theme::Dracula => Color::Rgb(241, 250, 140), // Yellow
+            Theme::Nord => Color::Rgb(235, 203, 139),    // Nord Aurora
+            Theme::Monokai => Color::Rgb(230, 219, 116), // Monokai Yellow
+        }
+    }
+
+    fn success_color(&self) -> Color {
+        match self {
+            Theme::Default => Color::Green,
+            Theme::Dracula => Color::Rgb(80, 250, 123), // Green
+            Theme::Nord => Color::Rgb(163, 190, 140),   // Nord Aurora
+            Theme::Monokai => Color::Rgb(166, 226, 46), // Monokai Green
+        }
+    }
+
+    fn error_color(&self) -> Color {
+        match self {
+            Theme::Default => Color::Red,
+            Theme::Dracula => Color::Rgb(255, 85, 85), // Red
+            Theme::Nord => Color::Rgb(191, 97, 106),   // Nord Aurora
+            Theme::Monokai => Color::Rgb(249, 38, 114), // Monokai Pink
+        }
+    }
+
+    fn accent_color(&self) -> Color {
+        match self {
+            Theme::Default => Color::Magenta,
+            Theme::Dracula => Color::Rgb(255, 121, 198), // Pink
+            Theme::Nord => Color::Rgb(180, 142, 173),    // Nord Aurora
+            Theme::Monokai => Color::Rgb(174, 129, 255), // Monokai Purple
+        }
+    }
+
+    fn next(&self) -> Self {
+        match self {
+            Theme::Default => Theme::Dracula,
+            Theme::Dracula => Theme::Nord,
+            Theme::Nord => Theme::Monokai,
+            Theme::Monokai => Theme::Default,
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            Theme::Default => "Default",
+            Theme::Dracula => "Dracula",
+            Theme::Nord => "Nord",
+            Theme::Monokai => "Monokai",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Tab {
     ApiKeys,
@@ -187,6 +261,18 @@ struct AppState {
 
     // Help tab state
     help_scroll_offset: usize,
+
+    // Stats tab state
+    stats_scroll_offset: usize,
+
+    // Activity log state
+    activity_scroll_offset: usize,
+
+    // Theme state
+    current_theme: Theme,
+
+    // Animation state
+    tab_transition_frame: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -237,6 +323,18 @@ impl AppState {
 
             // Help tab state
             help_scroll_offset: 0,
+
+            // Stats tab state
+            stats_scroll_offset: 0,
+
+            // Activity log state
+            activity_scroll_offset: 0,
+
+            // Theme state
+            current_theme: Theme::Default,
+
+            // Animation state
+            tab_transition_frame: 0,
         }
     }
 
@@ -524,6 +622,11 @@ fn run_app(
                         // Help
                         (KeyCode::Char('?'), _) => app.show_help = true,
 
+                        // Theme toggle (Ctrl+T)
+                        (KeyCode::Char('t'), KeyModifiers::CONTROL) => {
+                            app.current_theme = app.current_theme.next();
+                        }
+
                         // Navigation (context-aware)
                         (KeyCode::Char('j'), _) | (KeyCode::Down, _) => match app.current_tab {
                             Tab::ApiKeys => app.next_key(),
@@ -533,6 +636,16 @@ fn run_app(
                                 } else {
                                     app.next_memory();
                                 }
+                            }
+                            Tab::Help => {
+                                app.help_scroll_offset = app.help_scroll_offset.saturating_add(1);
+                            }
+                            Tab::Stats => {
+                                app.stats_scroll_offset = app.stats_scroll_offset.saturating_add(1);
+                            }
+                            Tab::ActivityLog => {
+                                app.activity_scroll_offset =
+                                    app.activity_scroll_offset.saturating_add(1);
                             }
                             _ => {}
                         },
@@ -545,16 +658,32 @@ fn run_app(
                                     app.prev_memory();
                                 }
                             }
+                            Tab::Help => {
+                                app.help_scroll_offset = app.help_scroll_offset.saturating_sub(1);
+                            }
+                            Tab::Stats => {
+                                app.stats_scroll_offset = app.stats_scroll_offset.saturating_sub(1);
+                            }
+                            Tab::ActivityLog => {
+                                app.activity_scroll_offset =
+                                    app.activity_scroll_offset.saturating_sub(1);
+                            }
                             _ => {}
                         },
-                        (KeyCode::Char('g'), _) => {
-                            if app.current_tab == Tab::ApiKeys {
-                                app.first_key();
-                            }
-                        }
+                        (KeyCode::Char('g'), _) => match app.current_tab {
+                            Tab::ApiKeys => app.first_key(),
+                            Tab::Help => app.help_scroll_offset = 0,
+                            Tab::Stats => app.stats_scroll_offset = 0,
+                            Tab::ActivityLog => app.activity_scroll_offset = 0,
+                            _ => {}
+                        },
                         (KeyCode::Char('G'), KeyModifiers::SHIFT) => {
-                            if app.current_tab == Tab::ApiKeys {
-                                app.last_key();
+                            match app.current_tab {
+                                Tab::ApiKeys => app.last_key(),
+                                Tab::Help => app.help_scroll_offset = 100, // Large number for max scroll
+                                Tab::Stats => app.stats_scroll_offset = 100,
+                                Tab::ActivityLog => app.activity_scroll_offset = 100,
+                                _ => {}
                             }
                         }
 
@@ -1148,9 +1277,14 @@ fn render_key_detail(f: &mut Frame, key: &api_keys::ApiKey, area: Rect) {
 }
 
 fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
+    let theme = app.current_theme;
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(10), Constraint::Min(0)])
+        .constraints([
+            Constraint::Length(12), // API Key bar chart
+            Constraint::Min(10),    // Detailed stats
+        ])
         .split(area);
 
     // Calculate stats
@@ -1159,7 +1293,7 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
     let revoked_keys = app.keys.iter().filter(|k| k.status() == "revoked").count();
     let expired_keys = app.keys.iter().filter(|k| k.status() == "expired").count();
 
-    // Bar chart data
+    // Bar chart data with theme colors
     let data = [
         ("Active", active_keys as u64),
         ("Revoked", revoked_keys as u64),
@@ -1171,9 +1305,9 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
         .enumerate()
         .map(|(i, (label, value))| {
             let color = match i {
-                0 => Color::Green,
-                1 => Color::Red,
-                2 => Color::Yellow,
+                0 => theme.success_color(),
+                1 => theme.error_color(),
+                2 => theme.secondary_color(),
                 _ => Color::White,
             };
             Bar::default()
@@ -1187,42 +1321,237 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(format!("API Key Statistics (Total: {})", total_keys)),
+                .border_style(Style::default().fg(theme.primary_color()))
+                .title(Span::styled(
+                    format!("API Key Statistics (Total: {})", total_keys),
+                    Style::default()
+                        .fg(theme.secondary_color())
+                        .add_modifier(Modifier::BOLD),
+                )),
         )
         .data(BarGroup::default().bars(&bars))
         .bar_width(15)
         .bar_gap(2)
         .bar_style(Style::default().fg(Color::White))
-        .value_style(Style::default().fg(Color::Black).bg(Color::White));
+        .value_style(Style::default().fg(Color::Black).bg(theme.primary_color()));
 
     f.render_widget(chart, chunks[0]);
 
-    // Detailed stats text
+    // Helper to create ASCII sparkline
+    let create_sparkline = |value: usize, max: usize| -> String {
+        if max == 0 {
+            return "".to_string();
+        }
+        let width = 20;
+        let filled = (value * width) / max.max(1);
+        let blocks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+        let full_blocks = filled / 1;
+        let mut result = String::new();
+        for _ in 0..full_blocks.min(width) {
+            result.push(blocks[7]);
+        }
+        for _ in full_blocks..width {
+            result.push(blocks[0]);
+        }
+        result
+    };
+
+    // Detailed stats with sparklines
+    let max_keys = total_keys.max(1);
     let stats_lines = vec![
         Line::from(""),
         Line::from(vec![
             Span::styled(
-                "Total Keys: ",
+                "┌─ API KEY METRICS ",
+                Style::default()
+                    .fg(theme.primary_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("─────────────────────────────────────────"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "  Total Keys:      ",
                 Style::default().add_modifier(Modifier::BOLD),
             ),
-            Span::raw(total_keys.to_string()),
+            Span::styled(
+                format!("{:>5}", total_keys),
+                Style::default()
+                    .fg(theme.accent_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "  Active:          ",
+                Style::default().fg(theme.success_color()),
+            ),
+            Span::styled(
+                format!("{:>5}", active_keys),
+                Style::default()
+                    .fg(theme.success_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!(
+                "  ({:>3}%)  ",
+                if total_keys > 0 {
+                    active_keys * 100 / total_keys
+                } else {
+                    0
+                }
+            )),
+            Span::styled(
+                create_sparkline(active_keys, max_keys),
+                Style::default().fg(theme.success_color()),
+            ),
         ]),
         Line::from(vec![
-            Span::styled("Active Keys: ", Style::default().fg(Color::Green)),
-            Span::raw(active_keys.to_string()),
+            Span::styled(
+                "  Revoked:         ",
+                Style::default().fg(theme.error_color()),
+            ),
+            Span::styled(
+                format!("{:>5}", revoked_keys),
+                Style::default()
+                    .fg(theme.error_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!(
+                "  ({:>3}%)  ",
+                if total_keys > 0 {
+                    revoked_keys * 100 / total_keys
+                } else {
+                    0
+                }
+            )),
+            Span::styled(
+                create_sparkline(revoked_keys, max_keys),
+                Style::default().fg(theme.error_color()),
+            ),
         ]),
         Line::from(vec![
-            Span::styled("Revoked Keys: ", Style::default().fg(Color::Red)),
-            Span::raw(revoked_keys.to_string()),
+            Span::styled(
+                "  Expired:         ",
+                Style::default().fg(theme.secondary_color()),
+            ),
+            Span::styled(
+                format!("{:>5}", expired_keys),
+                Style::default()
+                    .fg(theme.secondary_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(format!(
+                "  ({:>3}%)  ",
+                if total_keys > 0 {
+                    expired_keys * 100 / total_keys
+                } else {
+                    0
+                }
+            )),
+            Span::styled(
+                create_sparkline(expired_keys, max_keys),
+                Style::default().fg(theme.secondary_color()),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "┌─ MEMORY METRICS ",
+                Style::default()
+                    .fg(theme.primary_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("──────────────────────────────────────────"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "  Total Memories:  ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{:>5}", app.memories_list.len()),
+                Style::default()
+                    .fg(theme.accent_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(vec![
-            Span::styled("Expired Keys: ", Style::default().fg(Color::Yellow)),
-            Span::raw(expired_keys.to_string()),
+            Span::styled(
+                "  Topics:          ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{:>5}", app.topics_list.len()),
+                Style::default()
+                    .fg(theme.accent_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "┌─ SYSTEM INFO ",
+                Style::default()
+                    .fg(theme.primary_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("─────────────────────────────────────────────"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "  Current Theme:   ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                theme.name(),
+                Style::default()
+                    .fg(theme.secondary_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("  (Ctrl+T to change)"),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "  Active Filters:  ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                if app.filter_user.is_some()
+                    || app.search_query.is_some()
+                    || app.memory_filter_importance.is_some()
+                    || app.memory_search_query.is_some()
+                {
+                    "Yes"
+                } else {
+                    "None"
+                },
+                Style::default().fg(if app.filter_user.is_some() || app.search_query.is_some() {
+                    theme.secondary_color()
+                } else {
+                    Color::DarkGray
+                }),
+            ),
+        ]),
+        Line::from(""),
     ];
 
-    let stats_text =
-        Paragraph::new(stats_lines).block(Block::default().borders(Borders::ALL).title("Details"));
+    let stats_text = Paragraph::new(stats_lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.primary_color()))
+                .title(Span::styled(
+                    "Detailed Statistics",
+                    Style::default()
+                        .fg(theme.secondary_color())
+                        .add_modifier(Modifier::BOLD),
+                )),
+        )
+        .scroll((app.stats_scroll_offset as u16, 0));
 
     f.render_widget(stats_text, chunks[1]);
 }
@@ -1451,11 +1780,11 @@ fn render_activity_log_tab(f: &mut Frame, app: &AppState, area: Rect) {
 }
 
 // Helper functions for status bar styling
-fn key_span(k: &str) -> Span<'_> {
+fn key_span(k: &str, theme: Theme) -> Span<'_> {
     Span::styled(
         k.to_string(),
         Style::default()
-            .fg(Color::Cyan)
+            .fg(theme.primary_color())
             .add_modifier(Modifier::BOLD),
     )
 }
@@ -1469,6 +1798,7 @@ fn desc_span(d: &str) -> Span<'_> {
 }
 
 fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
+    let theme = app.current_theme;
     let (line1, line2) = match app.input_mode {
         InputMode::Normal => {
             if app.show_delete_confirmation {
@@ -1476,15 +1806,17 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
                 let confirm = vec![
                     Span::styled(
                         "Delete memory? ",
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme.error_color())
+                            .add_modifier(Modifier::BOLD),
                     ),
-                    key_span("y"),
+                    key_span("y", theme),
                     desc_span(" yes"),
                     sep_span(),
-                    key_span("n"),
+                    key_span("n", theme),
                     desc_span(" no"),
                     sep_span(),
-                    key_span("Esc"),
+                    key_span("Esc", theme),
                     desc_span(" cancel"),
                 ];
                 (confirm, vec![])
@@ -1494,40 +1826,40 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
                 match app.current_tab {
                     Tab::ApiKeys => {
                         tab_commands.extend(vec![
-                            key_span("n"),
+                            key_span("n", theme),
                             desc_span(" new"),
                             sep_span(),
-                            key_span("r"),
+                            key_span("r", theme),
                             desc_span(" revoke"),
                             sep_span(),
-                            key_span("R"),
+                            key_span("R", theme),
                             desc_span(" revoke-user"),
                             sep_span(),
-                            key_span("f"),
+                            key_span("f", theme),
                             desc_span(" filter"),
                             sep_span(),
-                            key_span("/"),
+                            key_span("/", theme),
                             desc_span(" search"),
                             sep_span(),
-                            key_span("c"),
+                            key_span("c", theme),
                             desc_span(" clear"),
                         ]);
                     }
                     Tab::Memories => {
                         tab_commands.extend(vec![
-                            key_span("/"),
+                            key_span("/", theme),
                             desc_span(" search"),
                             sep_span(),
-                            key_span("f"),
+                            key_span("f", theme),
                             desc_span(" filter"),
                             sep_span(),
-                            key_span("e"),
+                            key_span("e", theme),
                             desc_span(" export"),
                             sep_span(),
-                            key_span("d"),
+                            key_span("d", theme),
                             desc_span(" delete"),
                             sep_span(),
-                            key_span("c"),
+                            key_span("c", theme),
                             desc_span(" clear"),
                         ]);
                         // Show active filters
@@ -1546,22 +1878,22 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
                     }
                     Tab::Backup => {
                         tab_commands.extend(vec![
-                            key_span("e"),
+                            key_span("e", theme),
                             desc_span(" export all"),
                             sep_span(),
-                            key_span("i"),
+                            key_span("i", theme),
                             desc_span(" import file"),
                         ]);
                     }
                     Tab::Help => {
                         tab_commands.extend(vec![
-                            key_span("j/k"),
+                            key_span("j/k", theme),
                             desc_span(" scroll"),
                             sep_span(),
-                            key_span("gg"),
+                            key_span("gg", theme),
                             desc_span(" top"),
                             sep_span(),
-                            key_span("G"),
+                            key_span("G", theme),
                             desc_span(" bottom"),
                         ]);
                     }
@@ -1573,10 +1905,10 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
 
                 // Global commands (Line 2)
                 let mut global_commands = vec![
-                    key_span("Tab"),
+                    key_span("Tab", theme),
                     desc_span(" 1-6 switch"),
                     sep_span(),
-                    key_span("j/k"),
+                    key_span("j/k", theme),
                     desc_span(" nav"),
                     sep_span(),
                 ];
@@ -1584,17 +1916,17 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
                 // Add pagination hint if in Memories tab
                 if app.current_tab == Tab::Memories {
                     global_commands.extend(vec![
-                        key_span("PgUp/Dn"),
+                        key_span("PgUp/Dn", theme),
                         desc_span(" page"),
                         sep_span(),
                     ]);
                 }
 
                 global_commands.extend(vec![
-                    key_span("?"),
+                    key_span("?", theme),
                     desc_span(" help"),
                     sep_span(),
-                    key_span("q"),
+                    key_span("q", theme),
                     desc_span(" quit"),
                 ]);
 
@@ -2153,77 +2485,522 @@ fn render_backup_tab(f: &mut Frame, _app: &AppState, area: Rect) {
 // ========== Help Tab ==========
 
 fn render_help_tab(f: &mut Frame, app: &AppState, area: Rect) {
+    let theme = app.current_theme;
+    let pc = theme.primary_color();
+    let sc = theme.secondary_color();
+    let ac = theme.accent_color();
+    let suc = theme.success_color();
+
     let help_lines = vec![
-        Line::from(Span::styled(
-            "Alejandría TUI - Interactive Admin Dashboard",
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(Color::Yellow),
-        )),
         Line::from(""),
-        Line::from(Span::styled(
-            "NAVIGATION",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  Tab / Shift+Tab       - Switch between tabs"),
-        Line::from("  1/2/3/4/5/6           - Jump directly to tab"),
-        Line::from("  j / ↓                 - Move down in list"),
-        Line::from("  k / ↑                 - Move up in list"),
-        Line::from("  gg                    - Go to first item"),
-        Line::from("  G                     - Go to last item"),
-        Line::from("  q / Ctrl+C            - Quit application"),
+        Line::from(vec![Span::styled(
+            "╔═══════════════════════════════════════════════════════════╗",
+            Style::default().fg(pc),
+        )]),
+        Line::from(vec![
+            Span::styled("║  ", Style::default().fg(pc)),
+            Span::styled(
+                "Alejandría TUI - Interactive Admin Dashboard v1.9",
+                Style::default().fg(sc).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("       ║", Style::default().fg(pc)),
+        ]),
+        Line::from(vec![Span::styled(
+            "╚═══════════════════════════════════════════════════════════╝",
+            Style::default().fg(pc),
+        )]),
         Line::from(""),
-        Line::from(Span::styled(
-            "API KEYS TAB",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  r                     - Revoke selected key"),
-        Line::from("  R                     - Revoke all keys for user"),
-        Line::from("  f                     - Filter by username"),
-        Line::from("  /                     - Search (username/desc/id)"),
-        Line::from("  c                     - Clear filters"),
-        Line::from("  t                     - Toggle showing revoked keys"),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "GLOBAL NAVIGATION",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "Tab / Shift+Tab"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Switch between tabs", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "1/2/3/4/5/6"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Jump directly to specific tab",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "j / ↓"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Move down / scroll down", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "k / ↑"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Move up / scroll up", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "gg"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Go to first item / top of page",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "G"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Go to last item / bottom of page",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "?"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Toggle this help overlay", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "q / Ctrl+C"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Quit application", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "Ctrl+T"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Cycle color theme (Default/Dracula/Nord/Monokai)",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
         Line::from(""),
-        Line::from(Span::styled(
-            "MEMORIES TAB",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  /                     - Search memories (FTS5)"),
-        Line::from("  f                     - Filter by importance"),
-        Line::from("  e                     - Export selected memory"),
-        Line::from("  d                     - Delete with confirmation"),
-        Line::from("  Enter                 - View memory detail"),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "TAB 1: API KEYS",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "n"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Create new API key", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "r"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Revoke selected key", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "R"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Revoke all keys for a user",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "f"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Filter by username", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "/"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Search (username/description/key ID)",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "c"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Clear all filters", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "t"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Toggle showing revoked keys",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
         Line::from(""),
-        Line::from(Span::styled(
-            "BACKUP TAB",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  e                     - Start export wizard"),
-        Line::from("  i                     - Start import wizard"),
-        Line::from("  Format options: JSON, CSV, Markdown"),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "TAB 2: STATS",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "j/k or ↑/↓"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Scroll through statistics",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Stats include:", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![Span::raw("    • API key usage by user (bar chart)")]),
+        Line::from(vec![Span::raw("    • Memory count by topic (bar chart)")]),
+        Line::from(vec![Span::raw("    • Temporal decay statistics")]),
+        Line::from(vec![Span::raw("    • Storage usage metrics")]),
         Line::from(""),
-        Line::from(Span::styled(
-            "HELP TAB",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  j/k or ↑/↓            - Scroll help content"),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "TAB 3: ACTIVITY LOG",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "j/k or ↑/↓"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Scroll through activity log",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Displays:", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![Span::raw("    • Recent API operations")]),
+        Line::from(vec![Span::raw(
+            "    • Memory operations (create/update/delete)",
+        )]),
+        Line::from(vec![Span::raw("    • Export/import activities")]),
         Line::from(""),
-        Line::from(Span::styled(
-            "DATABASE STATS",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Line::from("  View Stats tab for:"),
-        Line::from("    - API key usage by user"),
-        Line::from("    - Memory count by topic"),
-        Line::from("    - Temporal decay statistics"),
-        Line::from("    - Storage usage metrics"),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "TAB 4: MEMORIES",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "/"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Search memories (full-text search with FTS5)",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "f"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Filter by importance (critical/high/medium/low)",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "e"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Export selected memory to file",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "d"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Delete memory with confirmation",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "c"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Clear search/filter", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "Enter"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("View full memory details", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "PgUp / PgDn"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Navigate through pages (50 per page)",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "TAB 5: BACKUP",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "e"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Start export wizard (all memories)",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "i"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Start import wizard from file",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Supported formats:", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![Span::raw("    • JSON   - Full structured export")]),
+        Line::from(vec![Span::raw("    • CSV    - Spreadsheet-compatible")]),
+        Line::from(vec![Span::raw(
+            "    • Markdown - Human-readable documentation",
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "TAB 6: HELP (YOU ARE HERE)",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "j/k or ↑/↓"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Scroll through this help content",
+                Style::default().fg(Color::Gray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "gg"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Jump to top of help", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{:<20}", "G"),
+                Style::default().fg(ac).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Jump to bottom of help", Style::default().fg(Color::Gray)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "SECURITY FEATURES",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  ✓ "),
+            Span::styled(
+                "Path traversal protection",
+                Style::default().fg(theme.success_color()),
+            ),
+            Span::raw(" - All file operations are sanitized"),
+        ]),
+        Line::from(vec![
+            Span::raw("  ✓ "),
+            Span::styled(
+                "Secret redaction",
+                Style::default().fg(theme.success_color()),
+            ),
+            Span::raw(" - API keys redacted in logs and exports"),
+        ]),
+        Line::from(vec![
+            Span::raw("  ✓ "),
+            Span::styled(
+                "Restrictive permissions",
+                Style::default().fg(theme.success_color()),
+            ),
+            Span::raw(" - Files created with 600 (owner-only)"),
+        ]),
+        Line::from(vec![
+            Span::raw("  ✓ "),
+            Span::styled(
+                "SHA-256 checksums",
+                Style::default().fg(theme.success_color()),
+            ),
+            Span::raw(" - Prevent file tampering"),
+        ]),
+        Line::from(vec![
+            Span::raw("  ✓ "),
+            Span::styled("Audit logging", Style::default().fg(theme.success_color())),
+            Span::raw(" - All operations logged to audit.log"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("┌─ "),
+            Span::styled(
+                "COLOR THEMES",
+                Style::default().fg(pc).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ─────────────────────────────────────────────────"),
+        ]),
+        Line::from(vec![
+            Span::raw("  Current theme: "),
+            Span::styled(
+                theme.name(),
+                Style::default()
+                    .fg(theme.secondary_color())
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from("  Press Ctrl+T to cycle between themes:"),
+        Line::from(vec![
+            Span::raw("    • "),
+            Span::styled("Default", Style::default().fg(Color::Cyan)),
+            Span::raw(" - Classic terminal colors"),
+        ]),
+        Line::from(vec![
+            Span::raw("    • "),
+            Span::styled("Dracula", Style::default().fg(Color::Rgb(139, 233, 253))),
+            Span::raw(" - Dark purple theme"),
+        ]),
+        Line::from(vec![
+            Span::raw("    • "),
+            Span::styled("Nord", Style::default().fg(Color::Rgb(136, 192, 208))),
+            Span::raw(" - Arctic-inspired cool tones"),
+        ]),
+        Line::from(vec![
+            Span::raw("    • "),
+            Span::styled("Monokai", Style::default().fg(Color::Rgb(102, 217, 239))),
+            Span::raw(" - High-contrast editor theme"),
+        ]),
+        Line::from(""),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            Style::default().fg(Color::DarkGray),
+        )]),
+        Line::from(vec![Span::styled(
+            " Made with ❤️  by AppSec Team | https://gitlab.veritran.net/appsec/alejandria ",
+            Style::default().fg(Color::DarkGray),
+        )]),
     ];
 
+    let title = format!(
+        "Help & Documentation - Scroll: {}/~50",
+        app.help_scroll_offset
+    );
     let paragraph = Paragraph::new(help_lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Help & Documentation"),
+                .border_style(Style::default().fg(theme.primary_color()))
+                .title(Span::styled(
+                    title,
+                    Style::default()
+                        .fg(theme.secondary_color())
+                        .add_modifier(Modifier::BOLD),
+                )),
         )
         .scroll((app.help_scroll_offset as u16, 0))
         .wrap(Wrap { trim: true });
