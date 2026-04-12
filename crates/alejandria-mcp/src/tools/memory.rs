@@ -28,6 +28,9 @@ struct StoreArgs {
     source: Option<String>,
     #[serde(default)]
     related_ids: Option<Vec<String>>,
+    /// If true, this memory will be accessible by all users (owner_key_hash = "SHARED")
+    #[serde(default)]
+    shared: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
