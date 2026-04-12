@@ -11,6 +11,22 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
+// === Helper Functions ===
+
+/// Get the current user hash for BOLA protection
+///
+/// Temporary implementation: Uses a static hash until AuthContext integration (P0-2)
+/// This will be replaced in P0-2 with actual API key → user mapping
+///
+/// TODO(P0-2): Replace with actual AuthContext from HTTP layer
+fn get_current_user_hash() -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update("default-user");
+    let hash = hasher.finalize();
+    format!("{:x}", hash)[..16].to_string()
+}
+
 // === Tool Argument Types ===
 
 #[derive(Debug, Deserialize)]
@@ -299,6 +315,15 @@ pub fn mem_store<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResul
     };
     memory.related_ids = args.related_ids.unwrap_or_default();
 
+    // Set owner_key_hash for BOLA protection
+    // TODO(P0-2): Replace with actual AuthContext from HTTP layer
+    let owner_key_hash = if args.shared.unwrap_or(false) {
+        "SHARED".to_string()
+    } else {
+        get_current_user_hash()
+    };
+    memory.owner_key_hash = owner_key_hash;
+
     // Store memory
     let id = store
         .store(memory)
@@ -316,7 +341,7 @@ pub fn mem_store<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResul
     Ok(ToolResult::success(format!("Memory stored:\n{}", json)))
 }
 
-/// mem_recall - Search and recall memories using hybrid search
+/// mem_recall - Search and recall memories using hybrid search (with BOLA protection)
 pub fn mem_recall<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResult, JsonRpcError> {
     // Deserialize arguments
     let args: RecallArgs = serde_json::from_value(args)
@@ -327,29 +352,29 @@ pub fn mem_recall<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResu
         return Err(JsonRpcError::invalid_params("query cannot be empty"));
     }
 
-    // Attempt hybrid search via SqliteStore downcast; fall back to keyword search
+    // Get current user hash for BOLA protection
+    // TODO(P0-2): Replace with actual AuthContext from HTTP layer
+    let owner_hash = get_current_user_hash();
+
+    // Use authorized search (filters by owner automatically)
     let scored_results = {
-        use alejandria_storage::{search::HybridConfig, SqliteStore};
+        use alejandria_storage::SqliteStore;
 
         // Downcast to SqliteStore (same pattern as mem_export)
         let sqlite_store = Arc::as_ptr(&store) as *const SqliteStore;
         let sqlite_store = unsafe { &*sqlite_store };
 
-        // Try to generate an embedding for the query
-        let embedding = sqlite_store
-            .embedder()
-            .and_then(|emb| match emb.embed(&args.query) {
-                Ok(vec) => Some(vec),
-                Err(_) => {
-                    // Embedding failed — fall back to FTS-only search silently
-                    None
-                }
-            });
+        // Use authorized keyword search - filters by owner at database level
+        let memories = sqlite_store
+            .search_by_keywords_authorized(&args.query, args.limit, &owner_hash)
+            .map_err(|e| JsonRpcError::internal_error(format!("Search failed: {}", e)))?;
 
-        let config = HybridConfig::default();
-        sqlite_store
-            .hybrid_search_with_fallback_scored(&args.query, embedding, args.limit, &config)
-            .map_err(|e| JsonRpcError::internal_error(format!("Search failed: {}", e)))?
+        // Convert to scored results (score = 1.0 for authorized keyword search)
+        // TODO: Implement hybrid_search_authorized for better scoring
+        memories
+            .into_iter()
+            .map(|memory| alejandria_storage::search::ScoredMemory { memory, score: 1.0 })
+            .collect::<Vec<_>>()
     };
 
     // Filter by min_score if specified (> 0.0)
@@ -398,7 +423,7 @@ pub fn mem_recall<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResu
     )))
 }
 
-/// mem_update - Update an existing memory
+/// mem_update - Update an existing memory (with BOLA protection)
 pub fn mem_update<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResult, JsonRpcError> {
     // Deserialize arguments
     let args: UpdateArgs = serde_json::from_value(args)
@@ -415,10 +440,26 @@ pub fn mem_update<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResu
         ));
     }
 
-    // Check if memory exists and get it
-    let mut memory = store
-        .get(&args.id)
-        .map_err(|e| JsonRpcError::internal_error(format!("Failed to get memory: {}", e)))?
+    // Get current user hash for BOLA protection
+    // TODO(P0-2): Replace with actual AuthContext from HTTP layer
+    let owner_hash = get_current_user_hash();
+
+    // Use authorized get to check ownership
+    use alejandria_storage::SqliteStore;
+    let sqlite_store = Arc::as_ptr(&store) as *const SqliteStore;
+    let sqlite_store = unsafe { &*sqlite_store };
+
+    // Get memory with ownership check
+    let mut memory = sqlite_store
+        .get_authorized(&args.id, &owner_hash)
+        .map_err(|e| {
+            // Map IcmError::Forbidden to JsonRpcError
+            if e.to_string().contains("Access denied") {
+                JsonRpcError::forbidden(e.to_string())
+            } else {
+                JsonRpcError::internal_error(format!("Failed to get memory: {}", e))
+            }
+        })?
         .ok_or_else(|| JsonRpcError::not_found(format!("Memory not found: {}", args.id)))?;
 
     // Track updated fields
@@ -460,10 +501,16 @@ pub fn mem_update<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResu
     // Update timestamp
     memory.updated_at = chrono::Utc::now();
 
-    // Store updated memory
-    store
-        .update(memory)
-        .map_err(|e| JsonRpcError::internal_error(format!("Failed to update memory: {}", e)))?;
+    // Use authorized update (preserves owner and checks authorization)
+    sqlite_store
+        .update_authorized(&memory, &owner_hash)
+        .map_err(|e| {
+            if e.to_string().contains("Access denied") {
+                JsonRpcError::forbidden(e.to_string())
+            } else {
+                JsonRpcError::internal_error(format!("Failed to update memory: {}", e))
+            }
+        })?;
 
     let response = UpdateResponse {
         id: args.id,
@@ -476,28 +523,32 @@ pub fn mem_update<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResu
     Ok(ToolResult::success(format!("Memory updated:\n{}", json)))
 }
 
-/// mem_forget - Soft-delete a memory
+/// mem_forget - Soft-delete a memory (with BOLA protection)
 pub fn mem_forget<S: MemoryStore>(args: Value, store: Arc<S>) -> Result<ToolResult, JsonRpcError> {
     // Deserialize arguments
     let args: ForgetArgs = serde_json::from_value(args)
         .map_err(|e| JsonRpcError::invalid_params(format!("Invalid arguments: {}", e)))?;
 
-    // Check if memory exists
-    let existing = store
-        .get(&args.id)
-        .map_err(|e| JsonRpcError::internal_error(format!("Failed to get memory: {}", e)))?;
+    // Get current user hash for BOLA protection
+    // TODO(P0-2): Replace with actual AuthContext from HTTP layer
+    let owner_hash = get_current_user_hash();
 
-    if existing.is_none() {
-        return Err(JsonRpcError::not_found(format!(
-            "Memory not found: {}",
-            args.id
-        )));
-    }
+    // Use authorized delete (checks ownership)
+    use alejandria_storage::SqliteStore;
+    let sqlite_store = Arc::as_ptr(&store) as *const SqliteStore;
+    let sqlite_store = unsafe { &*sqlite_store };
 
-    // Delete memory
-    store
-        .delete(&args.id)
-        .map_err(|e| JsonRpcError::internal_error(format!("Failed to delete memory: {}", e)))?;
+    sqlite_store
+        .delete_authorized(&args.id, &owner_hash)
+        .map_err(|e| {
+            if e.to_string().contains("Access denied") {
+                JsonRpcError::forbidden(e.to_string())
+            } else if e.to_string().contains("not found") {
+                JsonRpcError::not_found(format!("Memory not found: {}", args.id))
+            } else {
+                JsonRpcError::internal_error(format!("Failed to delete memory: {}", e))
+            }
+        })?;
 
     let response = ForgetResponse {
         id: args.id,

@@ -141,6 +141,16 @@ impl JsonRpcError {
             data: None,
         }
     }
+
+    /// Custom error: Forbidden (-32003)
+    /// Used for BOLA protection and authorization failures
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self {
+            code: -32003,
+            message: format!("Forbidden: {}", message.into()),
+            data: None,
+        }
+    }
 }
 
 /// MCP Tool Call Parameters
