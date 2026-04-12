@@ -1,0 +1,25 @@
+[req]
+default_bits       = 4096
+distinguished_name = req_distinguished_name
+req_extensions     = v3_req
+prompt             = no
+
+[req_distinguished_name]
+C  = AR
+ST = BuenosAires
+L  = CABA
+O  = Veritran
+OU = AppSec
+CN = ar-appsec-01.veritran.net
+
+[v3_req]
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = ar-appsec-01.veritran.net
+DNS.2 = ar-appsec-01
+DNS.3 = localhost
+IP.1 = 10.233.0.14
+IP.2 = 127.0.0.1
