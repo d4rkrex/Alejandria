@@ -4,11 +4,13 @@ set -euo pipefail
 # Alejandria Installer v4
 # Intelligent installer with auto-download, MCP client detection, and auto-configuration
 # Usage: curl -fsSL https://raw.githubusercontent.com/USER/alejandria/main/scripts/install-mcp-v4.sh | bash
+# For private GitLab repos: GITLAB_TOKEN=your_token ./scripts/install-mcp-v4.sh
 
 VERSION="${ALEJANDRIA_VERSION:-latest}"
 INSTALL_DIR="${ALEJANDRIA_INSTALL_DIR:-$HOME/.local/bin}"
 GITLAB_PROJECT="${GITLAB_PROJECT:-appsec/alejandria}"
 GITLAB_HOST="${GITLAB_HOST:-gitlab.veritran.net}"
+GITLAB_TOKEN="${GITLAB_TOKEN:-}"  # Optional: for private GitLab repos
 GITHUB_REPO="${GITHUB_REPO:-}"  # Fallback for public GitHub mirrors
 FORCE_BUILD="${FORCE_BUILD:-false}"
 KEEP_BUILD_CACHE="${KEEP_BUILD_CACHE:-false}"  # Set to true to preserve build artifacts
@@ -71,11 +73,20 @@ get_latest_version() {
         local project_path_encoded=$(echo "$GITLAB_PROJECT" | sed 's/\//%2F/g')
         api_url="https://${GITLAB_HOST}/api/v4/projects/${project_path_encoded}/repository/tags"
         
+        local curl_opts=(-fsSL)
+        if [ -n "$GITLAB_TOKEN" ]; then
+            curl_opts+=(--header "PRIVATE-TOKEN: $GITLAB_TOKEN")
+        fi
+        
         if command -v curl >/dev/null 2>&1; then
             # Get first tag from array and extract name field
-            curl -fsSL "$api_url" | grep -m 1 '"name":' | sed -E 's/.*"name":\s*"([^"]+)".*/\1/'
+            curl "${curl_opts[@]}" "$api_url" | grep -m 1 '"name":' | sed -E 's/.*"name":\s*"([^"]+)".*/\1/'
         elif command -v wget >/dev/null 2>&1; then
-            wget -qO- "$api_url" | grep -m 1 '"name":' | sed -E 's/.*"name":\s*"([^"]+)".*/\1/'
+            local wget_opts=(--quiet -O-)
+            if [ -n "$GITLAB_TOKEN" ]; then
+                wget_opts+=(--header="PRIVATE-TOKEN: $GITLAB_TOKEN")
+            fi
+            wget "${wget_opts[@]}" "$api_url" | grep -m 1 '"name":' | sed -E 's/.*"name":\s*"([^"]+)".*/\1/'
         else
             log_error "Neither curl nor wget found. Please install one of them."
             return 1
@@ -165,6 +176,97 @@ use_prebuilt_binary() {
     fi
     
     log_success "Pre-built binary installed to $INSTALL_DIR/alejandria"
+    return 0
+}
+
+# Download pre-built binary directly from GitLab API (workaround for clone cache issues)
+download_from_gitlab_api() {
+    local target=$1
+    local token="${GITLAB_TOKEN:-}"
+    
+    # Map target to binary filename
+    local binary_name
+    case "$target" in
+        x86_64-unknown-linux-gnu)
+            binary_name="alejandria-linux-x86_64"
+            ;;
+        x86_64-apple-darwin)
+            binary_name="alejandria-macos-x86_64"
+            ;;
+        aarch64-apple-darwin)
+            binary_name="alejandria-macos-aarch64"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    
+    local project_path_encoded=$(echo "$GITLAB_PROJECT" | sed 's/\//%2F/g')
+    local file_path_encoded="bin%2F${binary_name}"
+    local checksum_file_path_encoded="bin%2F${binary_name}.sha256"
+    local binary_url="https://${GITLAB_HOST}/api/v4/projects/${project_path_encoded}/repository/files/${file_path_encoded}/raw?ref=main"
+    local checksum_url="https://${GITLAB_HOST}/api/v4/projects/${project_path_encoded}/repository/files/${checksum_file_path_encoded}/raw?ref=main"
+    
+    log_info "Attempting to download $binary_name from GitLab API..."
+    
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    local binary_path="$tmp_dir/$binary_name"
+    local checksum_path="$tmp_dir/${binary_name}.sha256"
+    
+    # Download binary
+    local curl_opts=(-fsSL)
+    if [ -n "$token" ]; then
+        curl_opts+=(--header "PRIVATE-TOKEN: $token")
+    fi
+    
+    if ! curl "${curl_opts[@]}" "$binary_url" -o "$binary_path" 2>/dev/null; then
+        log_warn "Failed to download binary from GitLab API (may be private repo)"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+    
+    # Download checksum
+    if curl "${curl_opts[@]}" "$checksum_url" -o "$checksum_path" 2>/dev/null; then
+        # Verify checksum
+        log_info "Verifying checksum..."
+        cd "$tmp_dir"
+        if command -v sha256sum >/dev/null 2>&1; then
+            if ! sha256sum -c "$(basename "$checksum_path")" >/dev/null 2>&1; then
+                log_error "Checksum verification failed"
+                cd - >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+        elif command -v shasum >/dev/null 2>&1; then
+            if ! shasum -a 256 -c "$(basename "$checksum_path")" >/dev/null 2>&1; then
+                log_error "Checksum verification failed"
+                cd - >/dev/null
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+        fi
+        cd - >/dev/null
+        log_success "Checksum verified"
+    else
+        log_warn "Checksum file not found, skipping verification"
+    fi
+    
+    # Install binary
+    mkdir -p "$INSTALL_DIR"
+    
+    if ! cp "$binary_path" "$INSTALL_DIR/alejandria" 2>/dev/null; then
+        cp "$binary_path" "$INSTALL_DIR/alejandria.new"
+        chmod +x "$INSTALL_DIR/alejandria.new"
+        log_warn "Installed as 'alejandria.new' (current binary is running)"
+        log_warn "After terminating any running instances, run:"
+        log_warn "  mv $INSTALL_DIR/alejandria.new $INSTALL_DIR/alejandria"
+    else
+        chmod +x "$INSTALL_DIR/alejandria"
+    fi
+    
+    rm -rf "$tmp_dir"
+    log_success "Binary installed from GitLab API"
     return 0
 }
 
@@ -526,10 +628,10 @@ main() {
     # Get version
     if [ "$VERSION" = "latest" ]; then
         VERSION=$(get_latest_version) || {
-            log_warn "Could not fetch latest version, will build from source"
-            FORCE_BUILD=true
+            log_warn "Could not fetch latest version, will try pre-built binaries"
+            VERSION="main"  # Use main branch binaries as fallback
         }
-        log_info "Latest version: $VERSION"
+        log_info "Target version: $VERSION"
     fi
 
     # Check if we already have a recent binary installed
@@ -557,10 +659,13 @@ main() {
         # Try 1: Pre-built binary in repo (if we're in the repo)
         if use_prebuilt_binary "$target" "." 2>/dev/null; then
             log_success "Installed from pre-built binary"
-        # Try 2: Download from release/package registry
+        # Try 2: Download from GitLab API (workaround for clone cache issues)
+        elif [ "$SOURCE_TYPE" = "gitlab" ] && download_from_gitlab_api "$target" 2>/dev/null; then
+            log_success "Downloaded binary from GitLab API"
+        # Try 3: Download from release/package registry
         elif download_binary "$VERSION" "$target" 2>/dev/null; then
             log_success "Downloaded and installed binary"
-        # Try 3: Build from source
+        # Try 4: Build from source
         else
             log_warn "No pre-built binary or download available, building from source"
             build_from_source || exit 1
