@@ -946,13 +946,13 @@ fn import_memories_secure(store: &SqliteStore, path: &Path) -> Result<()> {
 }
 
 fn ui(f: &mut Frame, app: &AppState) {
-    // Main layout: tabs + content
+    // Main layout: tabs + content + 2-line status bar
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Min(0),
-            Constraint::Length(2),
+            Constraint::Length(3), // Tabs
+            Constraint::Min(0),    // Content
+            Constraint::Length(3), // Status bar (2 lines + border)
         ])
         .split(f.size());
 
@@ -1450,105 +1450,255 @@ fn render_activity_log_tab(f: &mut Frame, app: &AppState, area: Rect) {
     f.render_widget(list, area);
 }
 
+// Helper functions for status bar styling
+fn key_span(k: &str) -> Span<'_> {
+    Span::styled(
+        k.to_string(),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn sep_span() -> Span<'static> {
+    Span::styled(" │ ", Style::default().fg(Color::DarkGray))
+}
+
+fn desc_span(d: &str) -> Span<'_> {
+    Span::raw(d.to_string())
+}
+
 fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
-    let status_text = match app.input_mode {
+    let (line1, line2) = match app.input_mode {
         InputMode::Normal => {
-            let mut parts = vec![Span::raw("q:Quit | ?:Help | Tab:Switch | j/k:Nav")];
-
-            if app.current_tab == Tab::ApiKeys {
-                parts.push(Span::raw(
-                    " | r:Revoke | R:RevokeUser | f:Filter | /:Search | t:Toggle | c:Clear",
-                ));
-            }
-
-            if app.current_tab == Tab::Memories {
-                if app.show_delete_confirmation {
-                    parts = vec![Span::styled(
-                        "Delete memory? (y/n or Esc to cancel)",
+            if app.show_delete_confirmation {
+                // Special case: delete confirmation
+                let confirm = vec![
+                    Span::styled(
+                        "Delete memory? ",
                         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                    )];
-                } else {
-                    parts.push(Span::raw(
-                        " | /:Search | f:Filter | e:Export | d:Delete | PgUp/PgDn",
-                    ));
+                    ),
+                    key_span("y"),
+                    desc_span(" yes"),
+                    sep_span(),
+                    key_span("n"),
+                    desc_span(" no"),
+                    sep_span(),
+                    key_span("Esc"),
+                    desc_span(" cancel"),
+                ];
+                (confirm, vec![])
+            } else {
+                // Tab-specific commands (Line 1)
+                let mut tab_commands = Vec::new();
+                match app.current_tab {
+                    Tab::ApiKeys => {
+                        tab_commands.extend(vec![
+                            key_span("n"),
+                            desc_span(" new"),
+                            sep_span(),
+                            key_span("r"),
+                            desc_span(" revoke"),
+                            sep_span(),
+                            key_span("R"),
+                            desc_span(" revoke-user"),
+                            sep_span(),
+                            key_span("f"),
+                            desc_span(" filter"),
+                            sep_span(),
+                            key_span("/"),
+                            desc_span(" search"),
+                            sep_span(),
+                            key_span("c"),
+                            desc_span(" clear"),
+                        ]);
+                    }
+                    Tab::Memories => {
+                        tab_commands.extend(vec![
+                            key_span("/"),
+                            desc_span(" search"),
+                            sep_span(),
+                            key_span("f"),
+                            desc_span(" filter"),
+                            sep_span(),
+                            key_span("e"),
+                            desc_span(" export"),
+                            sep_span(),
+                            key_span("d"),
+                            desc_span(" delete"),
+                            sep_span(),
+                            key_span("c"),
+                            desc_span(" clear"),
+                        ]);
+                        // Show active filters
+                        if let Some(ref importance) = app.memory_filter_importance {
+                            tab_commands.push(Span::styled(
+                                format!(" [Filter: {}]", importance),
+                                Style::default().fg(Color::Yellow),
+                            ));
+                        }
+                        if let Some(ref query) = app.memory_search_query {
+                            tab_commands.push(Span::styled(
+                                format!(" [Search: {}]", query),
+                                Style::default().fg(Color::Yellow),
+                            ));
+                        }
+                    }
+                    Tab::Backup => {
+                        tab_commands.extend(vec![
+                            key_span("e"),
+                            desc_span(" export all"),
+                            sep_span(),
+                            key_span("i"),
+                            desc_span(" import file"),
+                        ]);
+                    }
+                    Tab::Help => {
+                        tab_commands.extend(vec![
+                            key_span("j/k"),
+                            desc_span(" scroll"),
+                            sep_span(),
+                            key_span("gg"),
+                            desc_span(" top"),
+                            sep_span(),
+                            key_span("G"),
+                            desc_span(" bottom"),
+                        ]);
+                    }
+                    Tab::Stats | Tab::ActivityLog => {
+                        // No specific commands
+                        tab_commands.push(desc_span("Use Tab to navigate or ? for help"));
+                    }
                 }
-            }
 
-            if let Some(ref user) = app.filter_user {
-                parts.push(Span::raw(format!(" | Filter: {}", user)));
-            }
+                // Global commands (Line 2)
+                let mut global_commands = vec![
+                    key_span("Tab"),
+                    desc_span(" 1-6 switch"),
+                    sep_span(),
+                    key_span("j/k"),
+                    desc_span(" nav"),
+                    sep_span(),
+                ];
 
-            if let Some(ref query) = app.search_query {
-                parts.push(Span::raw(format!(" | Search: {}", query)));
-            }
+                // Add pagination hint if in Memories tab
+                if app.current_tab == Tab::Memories {
+                    global_commands.extend(vec![
+                        key_span("PgUp/Dn"),
+                        desc_span(" page"),
+                        sep_span(),
+                    ]);
+                }
 
-            if let Some(ref importance) = app.memory_filter_importance {
-                parts.push(Span::raw(format!(" | Importance: {}", importance)));
-            }
+                global_commands.extend(vec![
+                    key_span("?"),
+                    desc_span(" help"),
+                    sep_span(),
+                    key_span("q"),
+                    desc_span(" quit"),
+                ]);
 
-            if let Some(ref query) = app.memory_search_query {
-                parts.push(Span::raw(format!(" | Memory Search: {}", query)));
-            }
+                // Add filter/search indicators for API Keys
+                if app.current_tab == Tab::ApiKeys {
+                    if let Some(ref user) = app.filter_user {
+                        global_commands.push(Span::styled(
+                            format!(" [Filter: {}]", user),
+                            Style::default().fg(Color::Yellow),
+                        ));
+                    }
+                    if let Some(ref query) = app.search_query {
+                        global_commands.push(Span::styled(
+                            format!(" [Search: {}]", query),
+                            Style::default().fg(Color::Yellow),
+                        ));
+                    }
+                    if app.show_revoked {
+                        global_commands.push(Span::styled(
+                            " [Showing Revoked]",
+                            Style::default().fg(Color::Yellow),
+                        ));
+                    }
+                }
 
-            if app.show_revoked {
-                parts.push(Span::raw(" | [Showing Revoked]"));
+                (tab_commands, global_commands)
             }
-
-            parts
         }
-        InputMode::Filter => vec![
-            Span::styled("Filter by user: ", Style::default().fg(Color::Yellow)),
-            Span::raw(&app.input_buffer),
-            Span::styled(
-                " (Enter to apply, Esc to cancel)",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ],
-        InputMode::Search => vec![
-            Span::styled("Search: ", Style::default().fg(Color::Yellow)),
-            Span::raw(&app.input_buffer),
-            Span::styled(
-                " (Enter to apply, Esc to cancel)",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ],
-        InputMode::NewKey => vec![
-            Span::styled("New key user: ", Style::default().fg(Color::Yellow)),
-            Span::raw(&app.input_buffer),
-            Span::styled(
-                " (Enter to continue, Esc to cancel)",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ],
-        InputMode::MemorySearch => vec![
-            Span::styled("Memory Search: ", Style::default().fg(Color::Yellow)),
-            Span::raw(&app.input_buffer),
-            Span::styled(
-                " (Enter to apply, Esc to cancel)",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ],
-        InputMode::ExportPath => vec![
-            Span::styled("Export Path: ", Style::default().fg(Color::Yellow)),
-            Span::raw(&app.input_buffer),
-            Span::styled(
-                " (Enter to export, Esc to cancel)",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ],
-        InputMode::ImportPath => vec![
-            Span::styled("Import Path: ", Style::default().fg(Color::Yellow)),
-            Span::raw(&app.input_buffer),
-            Span::styled(
-                " (Enter to continue, Esc to cancel)",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ],
+        InputMode::Filter => {
+            let prompt = vec![
+                Span::styled("Filter by user: ", Style::default().fg(Color::Yellow)),
+                Span::raw(&app.input_buffer),
+                Span::styled(
+                    " (Enter to apply, Esc to cancel)",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ];
+            (prompt, vec![])
+        }
+        InputMode::Search => {
+            let prompt = vec![
+                Span::styled("Search: ", Style::default().fg(Color::Yellow)),
+                Span::raw(&app.input_buffer),
+                Span::styled(
+                    " (Enter to apply, Esc to cancel)",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ];
+            (prompt, vec![])
+        }
+        InputMode::NewKey => {
+            let prompt = vec![
+                Span::styled("New key user: ", Style::default().fg(Color::Yellow)),
+                Span::raw(&app.input_buffer),
+                Span::styled(
+                    " (Enter to continue, Esc to cancel)",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ];
+            (prompt, vec![])
+        }
+        InputMode::MemorySearch => {
+            let prompt = vec![
+                Span::styled("Memory Search: ", Style::default().fg(Color::Yellow)),
+                Span::raw(&app.input_buffer),
+                Span::styled(
+                    " (Enter to apply, Esc to cancel)",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ];
+            (prompt, vec![])
+        }
+        InputMode::ExportPath => {
+            let prompt = vec![
+                Span::styled("Export to: ", Style::default().fg(Color::Yellow)),
+                Span::raw(&app.input_buffer),
+                Span::styled(
+                    " (Enter to export, Esc to cancel)",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ];
+            (prompt, vec![])
+        }
+        InputMode::ImportPath => {
+            let prompt = vec![
+                Span::styled("Import from: ", Style::default().fg(Color::Yellow)),
+                Span::raw(&app.input_buffer),
+                Span::styled(
+                    " (Enter to continue, Esc to cancel)",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ];
+            (prompt, vec![])
+        }
     };
 
-    let status =
-        Paragraph::new(Line::from(status_text)).block(Block::default().borders(Borders::ALL));
+    // Build text with 1 or 2 lines
+    let text = if line2.is_empty() {
+        Text::from(vec![Line::from(line1)])
+    } else {
+        Text::from(vec![Line::from(line1), Line::from(line2)])
+    };
 
+    let status = Paragraph::new(text).block(Block::default().borders(Borders::ALL));
     f.render_widget(status, area);
 }
 
