@@ -742,7 +742,7 @@ fn run_app(
                                 if app.memories.show_delete_confirmation {
                                     // Do nothing during confirmation
                                 } else {
-                                    app.next_memory();
+                                    app.next_topic();
                                 }
                             }
                             Tab::Help => {
@@ -762,7 +762,7 @@ fn run_app(
                                 if app.memories.show_delete_confirmation {
                                     // Do nothing during confirmation
                                 } else {
-                                    app.prev_memory();
+                                    app.prev_topic();
                                 }
                             }
                             Tab::Help => {
