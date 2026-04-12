@@ -168,8 +168,8 @@ detect_mcp_clients() {
     local clients=()
 
     # OpenCode
-    if [ -f "$HOME/.config/opencode/mcp_config.json" ]; then
-        clients+=("opencode:$HOME/.config/opencode/mcp_config.json")
+    if [ -f "$HOME/.config/opencode/opencode.json" ]; then
+        clients+=("opencode:$HOME/.config/opencode/opencode.json")
     fi
 
     # Claude Desktop
@@ -203,6 +203,7 @@ backup_config() {
 # Merge Alejandria config into MCP config
 merge_config() {
     local config_file=$1
+    local client_name=$2
     local backup_file
     
     log_info "Configuring $(basename "$(dirname "$config_file")")..."
@@ -215,9 +216,24 @@ merge_config() {
     local existing_config
     existing_config=$(cat "$config_file")
 
-    # Create Alejandria server config
+    # Create Alejandria server config based on client type
     local alejandria_config
-    alejandria_config=$(cat <<EOF
+    if [ "$client_name" = "opencode" ]; then
+        # OpenCode format: command array, enabled, type, environment
+        alejandria_config=$(cat <<EOF
+{
+  "command": ["$INSTALL_DIR/alejandria", "serve"],
+  "enabled": true,
+  "type": "local",
+  "environment": {
+    "ALEJANDRIA_CONFIG": "$HOME/.config/alejandria/config.toml"
+  }
+}
+EOF
+)
+    else
+        # Claude Desktop format: command string, args array, env object
+        alejandria_config=$(cat <<EOF
 {
   "command": "$INSTALL_DIR/alejandria",
   "args": ["serve"],
@@ -227,12 +243,22 @@ merge_config() {
 }
 EOF
 )
+    fi
+
+    # Determine the correct top-level key based on client
+    local mcp_key
+    if [ "$client_name" = "opencode" ]; then
+        mcp_key="mcp"
+    else
+        mcp_key="mcpServers"
+    fi
 
     # Merge configs using jq (or Python fallback)
     if command -v jq >/dev/null 2>&1; then
         echo "$existing_config" | jq \
             --argjson server "$alejandria_config" \
-            '.mcpServers.alejandria = $server' \
+            --arg key "$mcp_key" \
+            '.[$key].alejandria = $server' \
             > "$config_file.tmp"
     elif command -v python3 >/dev/null 2>&1; then
         python3 <<EOF
@@ -241,10 +267,11 @@ import sys
 
 existing = json.loads('''$existing_config''')
 server = json.loads('''$alejandria_config''')
+mcp_key = '''$mcp_key'''
 
-if 'mcpServers' not in existing:
-    existing['mcpServers'] = {}
-existing['mcpServers']['alejandria'] = server
+if mcp_key not in existing:
+    existing[mcp_key] = {}
+existing[mcp_key]['alejandria'] = server
 
 with open('$config_file.tmp', 'w') as f:
     json.dump(existing, f, indent=2)
@@ -381,7 +408,7 @@ main() {
         
         for client_info in "${clients[@]}"; do
             IFS=':' read -r client_name config_file <<< "$client_info"
-            merge_config "$config_file" || {
+            merge_config "$config_file" "$client_name" || {
                 log_error "Failed to configure $client_name"
                 continue
             }
