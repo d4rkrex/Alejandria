@@ -294,29 +294,79 @@ impl ScrollState {
     }
 }
 
-#[derive(Debug)]
-struct AppState {
-    current_tab: Tab,
-    keys_list_state: ListState,
-    keys: Vec<api_keys::ApiKey>,
-    selected_key_index: Option<usize>,
-    filter_user: Option<String>,
+/// Filter state for API keys tab
+#[derive(Debug, Clone, Default)]
+struct FilterState {
+    user: Option<String>,
     search_query: Option<String>,
     show_revoked: bool,
-    show_help: bool,
-    input_mode: InputMode,
-    input_buffer: String,
+}
 
-    // Memories tab state
+/// Memories tab state grouped together
+#[derive(Debug, Clone)]
+struct MemoriesState {
     memories_list: Vec<Memory>,
     memories_list_state: ListState,
     topics_list: Vec<(String, usize)>, // (topic, count)
     selected_topic_index: Option<usize>,
-    memory_search_query: Option<String>,
-    memory_filter_importance: Option<String>,
+    search_query: Option<String>,
+    filter_importance: Option<String>,
     show_delete_confirmation: bool,
     pagination_offset: usize,
     selected_memory_index: Option<usize>,
+}
+
+impl Default for MemoriesState {
+    fn default() -> Self {
+        Self {
+            memories_list: Vec::new(),
+            memories_list_state: ListState::default(),
+            topics_list: Vec::new(),
+            selected_topic_index: None,
+            search_query: None,
+            filter_importance: None,
+            show_delete_confirmation: false,
+            pagination_offset: 0,
+            selected_memory_index: None,
+        }
+    }
+}
+
+/// Scroll states grouped together
+#[derive(Debug, Clone)]
+struct ScrollStates {
+    help: ScrollState,
+    stats: ScrollState,
+    activity: ScrollState,
+}
+
+impl Default for ScrollStates {
+    fn default() -> Self {
+        Self {
+            help: ScrollState::new(100, 30),
+            stats: ScrollState::new(100, 30),
+            activity: ScrollState::new(50, 30),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AppState {
+    current_tab: Tab,
+
+    // API Keys tab state
+    keys_list_state: ListState,
+    keys: Vec<api_keys::ApiKey>,
+    selected_key_index: Option<usize>,
+    filters: FilterState,
+
+    // Input handling
+    show_help: bool,
+    input_mode: InputMode,
+    input_buffer: String,
+
+    // Memories tab state (grouped)
+    memories: MemoriesState,
 
     // Backup tab state
     #[allow(dead_code)] // Future expansion for full wizard UI
@@ -324,10 +374,8 @@ struct AppState {
     #[allow(dead_code)] // Future expansion for full wizard UI
     import_wizard_state: ImportWizardState,
 
-    // Smart scroll states (replaces simple offsets)
-    help_scroll: ScrollState,
-    stats_scroll: ScrollState,
-    activity_scroll: ScrollState,
+    // Scroll states (grouped)
+    scroll: ScrollStates,
 
     // Theme state
     current_theme: Theme,
@@ -360,32 +408,20 @@ impl AppState {
             keys_list_state: state,
             keys,
             selected_key_index: Some(0),
-            filter_user: None,
-            search_query: None,
-            show_revoked: false,
+            filters: FilterState::default(),
             show_help: false,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
 
-            // Memories tab state
-            memories_list: Vec::new(),
-            memories_list_state: ListState::default(),
-            topics_list: Vec::new(),
-            selected_topic_index: None,
-            memory_search_query: None,
-            memory_filter_importance: None,
-            show_delete_confirmation: false,
-            pagination_offset: 0,
-            selected_memory_index: None,
+            // Memories tab state (grouped)
+            memories: MemoriesState::default(),
 
             // Backup tab state
             export_wizard_state: ExportWizardState::default(),
             import_wizard_state: ImportWizardState::default(),
 
-            // Smart scroll states (initialized with reasonable defaults)
-            help_scroll: ScrollState::new(100, 30), // Will update on first render
-            stats_scroll: ScrollState::new(50, 30), // Will update on first render
-            activity_scroll: ScrollState::new(50, 30), // Will update on first render
+            // Scroll states (grouped)
+            scroll: ScrollStates::default(),
 
             // Theme state
             current_theme: Theme::Default,
@@ -400,19 +436,19 @@ impl AppState {
             .iter()
             .filter(|key| {
                 // Filter by revoked status
-                if !self.show_revoked && key.revoked_at.is_some() {
+                if !self.filters.show_revoked && key.revoked_at.is_some() {
                     return false;
                 }
 
                 // Filter by user
-                if let Some(ref user) = self.filter_user {
+                if let Some(ref user) = self.filters.user {
                     if !key.username.contains(user) {
                         return false;
                     }
                 }
 
                 // Filter by search query
-                if let Some(ref query) = self.search_query {
+                if let Some(ref query) = self.filters.search_query {
                     let query_lower = query.to_lowercase();
                     let matches_username = key.username.to_lowercase().contains(&query_lower);
                     let matches_desc = key
@@ -497,44 +533,46 @@ impl AppState {
     // Memories tab navigation
     #[allow(dead_code)] // Future expansion for topic browsing
     fn next_topic(&mut self) {
-        let count = self.topics_list.len();
+        let count = self.memories.topics_list.len();
         if count == 0 {
             return;
         }
-        let i = match self.selected_topic_index {
+        let i = match self.memories.selected_topic_index {
             Some(i) if i >= count - 1 => 0,
             Some(i) => i + 1,
             None => 0,
         };
-        self.selected_topic_index = Some(i);
+        self.memories.selected_topic_index = Some(i);
     }
 
     #[allow(dead_code)] // Future expansion for topic browsing
     fn prev_topic(&mut self) {
-        let count = self.topics_list.len();
+        let count = self.memories.topics_list.len();
         if count == 0 {
             return;
         }
-        let i = match self.selected_topic_index {
+        let i = match self.memories.selected_topic_index {
             Some(0) => count - 1,
             Some(i) => i - 1,
             None => 0,
         };
-        self.selected_topic_index = Some(i);
+        self.memories.selected_topic_index = Some(i);
     }
 
     fn selected_topic(&self) -> Option<&str> {
-        self.selected_topic_index
-            .and_then(|i| self.topics_list.get(i))
+        self.memories
+            .selected_topic_index
+            .and_then(|i| self.memories.topics_list.get(i))
             .map(|(topic, _)| topic.as_str())
     }
 
     fn filtered_memories(&self) -> Vec<&Memory> {
-        self.memories_list
+        self.memories
+            .memories_list
             .iter()
             .filter(|m| {
                 // Filter by importance
-                if let Some(ref importance) = self.memory_filter_importance {
+                if let Some(ref importance) = self.memories.filter_importance {
                     if &m.importance.to_string().to_lowercase() != importance {
                         return false;
                     }
@@ -546,7 +584,8 @@ impl AppState {
 
     fn selected_memory(&self) -> Option<&Memory> {
         let filtered = self.filtered_memories();
-        self.selected_memory_index
+        self.memories
+            .selected_memory_index
             .and_then(|idx| filtered.get(idx).copied())
     }
 
@@ -555,13 +594,13 @@ impl AppState {
         if count == 0 {
             return;
         }
-        let i = match self.selected_memory_index {
+        let i = match self.memories.selected_memory_index {
             Some(i) if i >= count - 1 => 0,
             Some(i) => i + 1,
             None => 0,
         };
-        self.selected_memory_index = Some(i);
-        self.memories_list_state.select(Some(i));
+        self.memories.selected_memory_index = Some(i);
+        self.memories.memories_list_state.select(Some(i));
     }
 
     fn prev_memory(&mut self) {
@@ -569,13 +608,13 @@ impl AppState {
         if count == 0 {
             return;
         }
-        let i = match self.selected_memory_index {
+        let i = match self.memories.selected_memory_index {
             Some(0) => count - 1,
             Some(i) => i - 1,
             None => 0,
         };
-        self.selected_memory_index = Some(i);
-        self.memories_list_state.select(Some(i));
+        self.memories.selected_memory_index = Some(i);
+        self.memories.memories_list_state.select(Some(i));
     }
 }
 
@@ -624,11 +663,11 @@ fn run_app(
 
         // Update scroll states for each tab
         // Help tab has ~80 lines of content
-        app.help_scroll.update_dimensions(80, visible_lines);
+        app.scroll.help.update_dimensions(80, visible_lines);
         // Stats tab content varies, estimate ~100 lines
-        app.stats_scroll.update_dimensions(100, visible_lines);
+        app.scroll.stats.update_dimensions(100, visible_lines);
         // Activity log varies, estimate ~50 lines (will be dynamic later)
-        app.activity_scroll.update_dimensions(50, visible_lines);
+        app.scroll.activity.update_dimensions(50, visible_lines);
 
         terminal.draw(|f| ui(f, app))?;
 
@@ -700,111 +739,114 @@ fn run_app(
                         (KeyCode::Char('j'), _) | (KeyCode::Down, _) => match app.current_tab {
                             Tab::ApiKeys => app.next_key(),
                             Tab::Memories => {
-                                if app.show_delete_confirmation {
+                                if app.memories.show_delete_confirmation {
                                     // Do nothing during confirmation
                                 } else {
                                     app.next_memory();
                                 }
                             }
                             Tab::Help => {
-                                app.help_scroll.scroll_down();
+                                app.scroll.help.scroll_down();
                             }
                             Tab::Stats => {
-                                app.stats_scroll.scroll_down();
+                                app.scroll.stats.scroll_down();
                             }
                             Tab::ActivityLog => {
-                                app.activity_scroll.scroll_down();
+                                app.scroll.activity.scroll_down();
                             }
                             _ => {}
                         },
                         (KeyCode::Char('k'), _) | (KeyCode::Up, _) => match app.current_tab {
                             Tab::ApiKeys => app.prev_key(),
                             Tab::Memories => {
-                                if app.show_delete_confirmation {
+                                if app.memories.show_delete_confirmation {
                                     // Do nothing during confirmation
                                 } else {
                                     app.prev_memory();
                                 }
                             }
                             Tab::Help => {
-                                app.help_scroll.scroll_up();
+                                app.scroll.help.scroll_up();
                             }
                             Tab::Stats => {
-                                app.stats_scroll.scroll_up();
+                                app.scroll.stats.scroll_up();
                             }
                             Tab::ActivityLog => {
-                                app.activity_scroll.scroll_up();
+                                app.scroll.activity.scroll_up();
                             }
                             _ => {}
                         },
                         (KeyCode::Char('g'), _) => match app.current_tab {
                             Tab::ApiKeys => app.first_key(),
-                            Tab::Help => app.help_scroll.go_to_top(),
-                            Tab::Stats => app.stats_scroll.go_to_top(),
-                            Tab::ActivityLog => app.activity_scroll.go_to_top(),
+                            Tab::Help => app.scroll.help.go_to_top(),
+                            Tab::Stats => app.scroll.stats.go_to_top(),
+                            Tab::ActivityLog => app.scroll.activity.go_to_top(),
                             _ => {}
                         },
                         (KeyCode::Char('G'), KeyModifiers::SHIFT) => match app.current_tab {
                             Tab::ApiKeys => app.last_key(),
-                            Tab::Help => app.help_scroll.go_to_bottom(),
-                            Tab::Stats => app.stats_scroll.go_to_bottom(),
-                            Tab::ActivityLog => app.activity_scroll.go_to_bottom(),
+                            Tab::Help => app.scroll.help.go_to_bottom(),
+                            Tab::Stats => app.scroll.stats.go_to_bottom(),
+                            Tab::ActivityLog => app.scroll.activity.go_to_bottom(),
                             _ => {}
                         },
 
                         // Page navigation for Memories tab
                         (KeyCode::PageDown, _) if app.current_tab == Tab::Memories => {
-                            app.pagination_offset += 50;
+                            app.memories.pagination_offset += 50;
                             // Reload memories with new offset
                             if let Some(topic) = app.selected_topic() {
-                                app.memories_list = load_memories_for_topic_with_offset(
+                                app.memories.memories_list = load_memories_for_topic_with_offset(
                                     store,
                                     topic,
                                     50,
-                                    app.pagination_offset,
+                                    app.memories.pagination_offset,
                                 )?;
                             }
                         }
                         (KeyCode::PageUp, _) if app.current_tab == Tab::Memories => {
-                            if app.pagination_offset >= 50 {
-                                app.pagination_offset -= 50;
+                            if app.memories.pagination_offset >= 50 {
+                                app.memories.pagination_offset -= 50;
                                 if let Some(topic) = app.selected_topic() {
-                                    app.memories_list = load_memories_for_topic_with_offset(
-                                        store,
-                                        topic,
-                                        50,
-                                        app.pagination_offset,
-                                    )?;
+                                    app.memories.memories_list =
+                                        load_memories_for_topic_with_offset(
+                                            store,
+                                            topic,
+                                            50,
+                                            app.memories.pagination_offset,
+                                        )?;
                                 }
                             }
                         }
 
                         // Delete confirmation handling
                         (KeyCode::Char('y'), _)
-                            if app.show_delete_confirmation && app.current_tab == Tab::Memories =>
+                            if app.memories.show_delete_confirmation
+                                && app.current_tab == Tab::Memories =>
                         {
                             if let Some(memory) = app.selected_memory() {
                                 let memory_id = memory.id.clone();
                                 store.delete(&memory_id)?;
-                                app.memories_list.retain(|m| m.id != memory_id);
-                                if app.selected_memory_index.is_some()
-                                    && !app.memories_list.is_empty()
+                                app.memories.memories_list.retain(|m| m.id != memory_id);
+                                if app.memories.selected_memory_index.is_some()
+                                    && !app.memories.memories_list.is_empty()
                                 {
                                     let new_idx = app
+                                        .memories
                                         .selected_memory_index
                                         .unwrap()
-                                        .min(app.memories_list.len() - 1);
-                                    app.selected_memory_index = Some(new_idx);
-                                    app.memories_list_state.select(Some(new_idx));
+                                        .min(app.memories.memories_list.len() - 1);
+                                    app.memories.selected_memory_index = Some(new_idx);
+                                    app.memories.memories_list_state.select(Some(new_idx));
                                 }
                             }
-                            app.show_delete_confirmation = false;
+                            app.memories.show_delete_confirmation = false;
                         }
-                        (KeyCode::Char('n'), _) if app.show_delete_confirmation => {
-                            app.show_delete_confirmation = false;
+                        (KeyCode::Char('n'), _) if app.memories.show_delete_confirmation => {
+                            app.memories.show_delete_confirmation = false;
                         }
-                        (KeyCode::Esc, _) if app.show_delete_confirmation => {
-                            app.show_delete_confirmation = false;
+                        (KeyCode::Esc, _) if app.memories.show_delete_confirmation => {
+                            app.memories.show_delete_confirmation = false;
                         }
 
                         // API Keys tab actions
@@ -823,7 +865,7 @@ fn run_app(
                             }
                         }
                         (KeyCode::Char('t'), _) if app.current_tab == Tab::ApiKeys => {
-                            app.show_revoked = !app.show_revoked;
+                            app.filters.show_revoked = !app.filters.show_revoked;
                         }
 
                         // Filter/Search (context-aware)
@@ -834,8 +876,8 @@ fn run_app(
                             }
                             Tab::Memories => {
                                 // Cycle through importance levels
-                                app.memory_filter_importance =
-                                    match app.memory_filter_importance.as_deref() {
+                                app.memories.filter_importance =
+                                    match app.memories.filter_importance.as_deref() {
                                         None => Some("critical".to_string()),
                                         Some("critical") => Some("high".to_string()),
                                         Some("high") => Some("medium".to_string()),
@@ -859,14 +901,14 @@ fn run_app(
                         },
                         (KeyCode::Char('c'), _) if app.current_tab == Tab::ApiKeys => {
                             // Clear filters
-                            app.filter_user = None;
-                            app.search_query = None;
+                            app.filters.user = None;
+                            app.filters.search_query = None;
                         }
 
                         // Memories tab actions
                         (KeyCode::Char('e'), _)
                             if app.current_tab == Tab::Memories
-                                && !app.show_delete_confirmation =>
+                                && !app.memories.show_delete_confirmation =>
                         {
                             if let Some(memory) = app.selected_memory() {
                                 let memory_id = memory.id.clone();
@@ -876,10 +918,10 @@ fn run_app(
                         }
                         (KeyCode::Char('d'), _)
                             if app.current_tab == Tab::Memories
-                                && !app.show_delete_confirmation =>
+                                && !app.memories.show_delete_confirmation =>
                         {
                             if app.selected_memory().is_some() {
-                                app.show_delete_confirmation = true;
+                                app.memories.show_delete_confirmation = true;
                             }
                         }
 
@@ -916,34 +958,34 @@ fn run_app(
                             match app.input_mode {
                                 InputMode::Filter => {
                                     if app.input_buffer.is_empty() {
-                                        app.filter_user = None;
+                                        app.filters.user = None;
                                     } else {
-                                        app.filter_user = Some(app.input_buffer.clone());
+                                        app.filters.user = Some(app.input_buffer.clone());
                                     }
                                 }
                                 InputMode::Search => {
                                     if app.input_buffer.is_empty() {
-                                        app.search_query = None;
+                                        app.filters.search_query = None;
                                     } else {
-                                        app.search_query = Some(app.input_buffer.clone());
+                                        app.filters.search_query = Some(app.input_buffer.clone());
                                     }
                                 }
                                 InputMode::MemorySearch => {
                                     if app.input_buffer.is_empty() {
-                                        app.memory_search_query = None;
+                                        app.memories.search_query = None;
                                         // Reload from topic if selected
                                         if let Some(topic) = app.selected_topic() {
-                                            app.memories_list =
+                                            app.memories.memories_list =
                                                 load_memories_for_topic(store, topic, Some(50))?;
                                         }
                                     } else {
                                         // Execute FTS5 search
-                                        app.memory_search_query = Some(app.input_buffer.clone());
-                                        app.memories_list =
+                                        app.memories.search_query = Some(app.input_buffer.clone());
+                                        app.memories.memories_list =
                                             search_memories(store, &app.input_buffer, 50)?;
-                                        if !app.memories_list.is_empty() {
-                                            app.selected_memory_index = Some(0);
-                                            app.memories_list_state.select(Some(0));
+                                        if !app.memories.memories_list.is_empty() {
+                                            app.memories.selected_memory_index = Some(0);
+                                            app.memories.memories_list_state.select(Some(0));
                                         }
                                     }
                                 }
@@ -1027,17 +1069,18 @@ fn handle_tab_switch(app: &mut AppState, store: &SqliteStore, prev_tab: Tab) -> 
     // Only load data when switching TO Memories tab
     if app.current_tab == Tab::Memories && prev_tab != Tab::Memories {
         // Load topics
-        app.topics_list = load_topics(store)?;
-        if !app.topics_list.is_empty() {
-            app.selected_topic_index = Some(0);
+        app.memories.topics_list = load_topics(store)?;
+        if !app.memories.topics_list.is_empty() {
+            app.memories.selected_topic_index = Some(0);
             // Load memories for first topic
-            app.memories_list = load_memories_for_topic(store, &app.topics_list[0].0, Some(50))?;
-            if !app.memories_list.is_empty() {
-                app.selected_memory_index = Some(0);
-                app.memories_list_state.select(Some(0));
+            app.memories.memories_list =
+                load_memories_for_topic(store, &app.memories.topics_list[0].0, Some(50))?;
+            if !app.memories.memories_list.is_empty() {
+                app.memories.selected_memory_index = Some(0);
+                app.memories.memories_list_state.select(Some(0));
             }
         }
-        app.pagination_offset = 0;
+        app.memories.pagination_offset = 0;
     }
     Ok(())
 }
@@ -1197,6 +1240,8 @@ fn ui(f: &mut Frame, app: &AppState) {
 }
 
 fn render_api_keys_tab(f: &mut Frame, app: &AppState, area: Rect) {
+    let theme = app.current_theme;
+
     // Split into list (left) and detail (right)
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -1205,6 +1250,113 @@ fn render_api_keys_tab(f: &mut Frame, app: &AppState, area: Rect) {
 
     // Render keys list
     let filtered_keys = app.filtered_keys();
+
+    // Empty state check
+    if filtered_keys.is_empty() {
+        let empty_msg = if app.keys.is_empty() {
+            // No keys at all in database
+            vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "🔑 No API Keys Found",
+                    Style::default()
+                        .fg(theme.secondary_color())
+                        .add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from("Get started by creating your first API key:"),
+                Line::from(""),
+                Line::from(vec![
+                    Span::raw("  • Press "),
+                    Span::styled(
+                        "n",
+                        Style::default()
+                            .fg(theme.primary_color())
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" to create a new API key"),
+                ]),
+                Line::from(""),
+                Line::from("API keys are used to authenticate requests"),
+                Line::from("to the Alejandría memory system."),
+            ]
+        } else {
+            // Keys exist but filters hide them all
+            vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "🔍 No Keys Match Your Filters",
+                    Style::default()
+                        .fg(theme.secondary_color())
+                        .add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from(format!("Total keys in database: {}", app.keys.len())),
+                Line::from(""),
+                Line::from("Active filters:"),
+                Line::from(vec![
+                    Span::raw("  • "),
+                    Span::styled(
+                        format!(
+                            "User: {}",
+                            app.filters.user.as_ref().unwrap_or(&"(all)".to_string())
+                        ),
+                        Style::default().fg(theme.accent_color()),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::raw("  • "),
+                    Span::styled(
+                        format!("Show revoked: {}", app.filters.show_revoked),
+                        Style::default().fg(theme.accent_color()),
+                    ),
+                ]),
+                Line::from(""),
+                Line::from("Try:"),
+                Line::from(vec![
+                    Span::raw("  • Press "),
+                    Span::styled(
+                        "f",
+                        Style::default()
+                            .fg(theme.primary_color())
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" to clear user filter"),
+                ]),
+                Line::from(vec![
+                    Span::raw("  • Press "),
+                    Span::styled(
+                        "R",
+                        Style::default()
+                            .fg(theme.primary_color())
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" to toggle showing revoked keys"),
+                ]),
+            ]
+        };
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.primary_color()))
+            .title("API Keys (0)");
+        let paragraph = Paragraph::new(empty_msg).block(block).centered();
+        f.render_widget(paragraph, chunks[0]);
+
+        // Empty detail panel
+        let detail_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.primary_color()))
+            .title("Key Detail");
+        let detail_text = Paragraph::new("Select a key to view details")
+            .block(detail_block)
+            .centered();
+        f.render_widget(detail_text, chunks[1]);
+
+        return;
+    }
+
+    // Normal rendering when keys exist
     let items: Vec<ListItem> = filtered_keys
         .iter()
         .map(|key| {
@@ -1547,7 +1699,7 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                format!("{:>5}", app.memories_list.len()),
+                format!("{:>5}", app.memories.memories_list.len()),
                 Style::default()
                     .fg(theme.accent_color())
                     .add_modifier(Modifier::BOLD),
@@ -1559,7 +1711,7 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                format!("{:>5}", app.topics_list.len()),
+                format!("{:>5}", app.memories.topics_list.len()),
                 Style::default()
                     .fg(theme.accent_color())
                     .add_modifier(Modifier::BOLD),
@@ -1595,20 +1747,22 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                if app.filter_user.is_some()
-                    || app.search_query.is_some()
-                    || app.memory_filter_importance.is_some()
-                    || app.memory_search_query.is_some()
+                if app.filters.user.is_some()
+                    || app.filters.search_query.is_some()
+                    || app.memories.filter_importance.is_some()
+                    || app.memories.search_query.is_some()
                 {
                     "Yes"
                 } else {
                     "None"
                 },
-                Style::default().fg(if app.filter_user.is_some() || app.search_query.is_some() {
-                    theme.secondary_color()
-                } else {
-                    Color::DarkGray
-                }),
+                Style::default().fg(
+                    if app.filters.user.is_some() || app.filters.search_query.is_some() {
+                        theme.secondary_color()
+                    } else {
+                        Color::DarkGray
+                    },
+                ),
             ),
         ]),
         Line::from(""),
@@ -1626,7 +1780,7 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
                         .add_modifier(Modifier::BOLD),
                 )),
         )
-        .scroll((app.stats_scroll.offset() as u16, 0));
+        .scroll((app.scroll.stats.offset() as u16, 0));
 
     f.render_widget(stats_text, chunks[1]);
 }
@@ -1806,6 +1960,54 @@ mod security_tests {
 }
 
 fn render_activity_log_tab(f: &mut Frame, app: &AppState, area: Rect) {
+    let theme = app.current_theme;
+
+    // Empty state: No keys = no activity
+    if app.keys.is_empty() {
+        let empty_msg = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "📜 No Activity to Display",
+                Style::default()
+                    .fg(theme.secondary_color())
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from("Activity log tracks API key usage and creation."),
+            Line::from(""),
+            Line::from("Since there are no API keys yet, there's no activity."),
+            Line::from(""),
+            Line::from("To see activity:"),
+            Line::from(vec![
+                Span::raw("  1. Create an API key (press "),
+                Span::styled(
+                    "1",
+                    Style::default()
+                        .fg(theme.primary_color())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" to go to API Keys tab, then "),
+                Span::styled(
+                    "n",
+                    Style::default()
+                        .fg(theme.primary_color())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(")"),
+            ]),
+            Line::from("  2. Use the key to make API requests"),
+            Line::from("  3. Activity will appear here automatically"),
+        ];
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.primary_color()))
+            .title("Recent Activity (0)");
+        let paragraph = Paragraph::new(empty_msg).block(block).centered();
+        f.render_widget(paragraph, area);
+        return;
+    }
+
     // Get recent activity (keys sorted by last_used_at or created_at)
     let mut recent_keys = app.keys.clone();
     recent_keys.sort_by(|a, b| {
@@ -1876,7 +2078,7 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
     let theme = app.current_theme;
     let (line1, line2) = match app.input_mode {
         InputMode::Normal => {
-            if app.show_delete_confirmation {
+            if app.memories.show_delete_confirmation {
                 // Special case: delete confirmation
                 let confirm = vec![
                     Span::styled(
@@ -1938,13 +2140,13 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
                             desc_span(" clear"),
                         ]);
                         // Show active filters
-                        if let Some(ref importance) = app.memory_filter_importance {
+                        if let Some(ref importance) = app.memories.filter_importance {
                             tab_commands.push(Span::styled(
                                 format!(" [Filter: {}]", importance),
                                 Style::default().fg(Color::Yellow),
                             ));
                         }
-                        if let Some(ref query) = app.memory_search_query {
+                        if let Some(ref query) = app.memories.search_query {
                             tab_commands.push(Span::styled(
                                 format!(" [Search: {}]", query),
                                 Style::default().fg(Color::Yellow),
@@ -2007,19 +2209,19 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
 
                 // Add filter/search indicators for API Keys
                 if app.current_tab == Tab::ApiKeys {
-                    if let Some(ref user) = app.filter_user {
+                    if let Some(ref user) = app.filters.user {
                         global_commands.push(Span::styled(
                             format!(" [Filter: {}]", user),
                             Style::default().fg(Color::Yellow),
                         ));
                     }
-                    if let Some(ref query) = app.search_query {
+                    if let Some(ref query) = app.filters.search_query {
                         global_commands.push(Span::styled(
                             format!(" [Search: {}]", query),
                             Style::default().fg(Color::Yellow),
                         ));
                     }
-                    if app.show_revoked {
+                    if app.filters.show_revoked {
                         global_commands.push(Span::styled(
                             " [Showing Revoked]",
                             Style::default().fg(Color::Yellow),
@@ -2349,14 +2551,85 @@ fn log_backup_operation(
 // ========== Memories Tab ==========
 
 fn render_memories_tab(f: &mut Frame, app: &AppState, area: Rect) {
+    let theme = app.current_theme;
+
     // Split into topic list (left 40%) and memory detail (right 60%)
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(area);
 
-    // Render topics list
+    // Empty state: No topics at all
+    if app.memories.topics_list.is_empty() {
+        let empty_msg = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "💭 No Memory Topics Found",
+                Style::default()
+                    .fg(theme.secondary_color())
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from("This means no memories have been stored yet."),
+            Line::from(""),
+            Line::from("Memories are organized by topics. To create one:"),
+            Line::from(""),
+            Line::from(vec![
+                Span::raw("  1. Exit TUI (press "),
+                Span::styled(
+                    "q",
+                    Style::default()
+                        .fg(theme.primary_color())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(")"),
+            ]),
+            Line::from(vec![
+                Span::raw("  2. Run: "),
+                Span::styled(
+                    "alejandria store",
+                    Style::default()
+                        .fg(theme.accent_color())
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(""),
+            Line::from("Or import existing memories from backup:"),
+            Line::from(vec![
+                Span::raw("  • Press "),
+                Span::styled(
+                    "Tab",
+                    Style::default()
+                        .fg(theme.primary_color())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" to navigate to Backup tab"),
+            ]),
+        ];
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.primary_color()))
+            .title("Topics (0)");
+        let paragraph = Paragraph::new(empty_msg).block(block).centered();
+        f.render_widget(paragraph, chunks[0]);
+
+        // Empty detail panel
+        let detail_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.primary_color()))
+            .title("Memory Detail");
+        let detail_text = Paragraph::new("No memories to display")
+            .block(detail_block)
+            .centered();
+        f.render_widget(detail_text, chunks[1]);
+
+        return;
+    }
+
+    // Render topics list (when topics exist)
     let items: Vec<ListItem> = app
+        .memories
         .topics_list
         .iter()
         .map(|(topic, count)| {
@@ -2370,7 +2643,7 @@ fn render_memories_tab(f: &mut Frame, app: &AppState, area: Rect) {
         .collect();
 
     let mut list_state = ListState::default();
-    if let Some(idx) = app.selected_topic_index {
+    if let Some(idx) = app.memories.selected_topic_index {
         list_state.select(Some(idx));
     }
 
@@ -2378,7 +2651,7 @@ fn render_memories_tab(f: &mut Frame, app: &AppState, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(format!("Topics ({})", app.topics_list.len())),
+                .title(format!("Topics ({})", app.memories.topics_list.len())),
         )
         .highlight_style(
             Style::default()
@@ -2402,18 +2675,54 @@ fn render_memories_tab(f: &mut Frame, app: &AppState, area: Rect) {
 }
 
 fn render_topic_detail(f: &mut Frame, app: &AppState, topic: &str, area: Rect) {
+    let theme = app.current_theme;
+
     // Filter memories by selected topic
     let topic_memories: Vec<&Memory> = app
+        .memories
         .memories_list
         .iter()
         .filter(|m| m.topic == topic)
         .collect();
 
     if topic_memories.is_empty() {
+        let empty_msg = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                format!("📭 Topic '{}' is Empty", topic),
+                Style::default()
+                    .fg(theme.secondary_color())
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from("This topic exists but has no memories yet."),
+            Line::from(""),
+            Line::from("This can happen if:"),
+            Line::from("  • Memories were recently deleted"),
+            Line::from("  • Topic was just created"),
+            Line::from("  • Filters are hiding all memories"),
+            Line::from(""),
+            Line::from("To add memories to this topic:"),
+            Line::from(vec![
+                Span::raw("  • Use "),
+                Span::styled(
+                    "alejandria store --topic ",
+                    Style::default().fg(theme.accent_color()),
+                ),
+                Span::styled(
+                    topic,
+                    Style::default()
+                        .fg(theme.primary_color())
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+        ];
+
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.primary_color()))
             .title(format!("Topic: {}", topic));
-        let text = Paragraph::new("No memories in this topic").block(block);
+        let text = Paragraph::new(empty_msg).block(block).centered();
         f.render_widget(text, area);
         return;
     }
@@ -3063,8 +3372,8 @@ fn render_help_tab(f: &mut Frame, app: &AppState, area: Rect) {
 
     let title = format!(
         "Help & Documentation - Scroll: {}/{} (j/k or arrows to scroll, gg/G to jump)",
-        app.help_scroll.offset(),
-        app.help_scroll.max_offset()
+        app.scroll.help.offset(),
+        app.scroll.help.max_offset()
     );
     let paragraph = Paragraph::new(help_lines)
         .block(
@@ -3078,7 +3387,7 @@ fn render_help_tab(f: &mut Frame, app: &AppState, area: Rect) {
                         .add_modifier(Modifier::BOLD),
                 )),
         )
-        .scroll((app.help_scroll.offset() as u16, 0))
+        .scroll((app.scroll.help.offset() as u16, 0))
         .wrap(Wrap { trim: true });
 
     f.render_widget(paragraph, area);
@@ -3254,9 +3563,9 @@ mod tui_tests {
         let app = AppState::new(vec![]);
 
         // ScrollStates should be initialized (even with default dimensions)
-        assert_eq!(app.help_scroll.offset(), 0);
-        assert_eq!(app.stats_scroll.offset(), 0);
-        assert_eq!(app.activity_scroll.offset(), 0);
+        assert_eq!(app.scroll.help.offset(), 0);
+        assert_eq!(app.scroll.stats.offset(), 0);
+        assert_eq!(app.scroll.activity.offset(), 0);
     }
 
     // ========== Future Tests (TODO) ==========
