@@ -95,6 +95,79 @@ get_latest_version() {
     fi
 }
 
+# Check for pre-compiled binary in repo
+use_prebuilt_binary() {
+    local target=$1
+    local repo_dir="${2:-.}"  # Current dir or specified repo path
+    
+    # Map target to binary filename
+    local binary_name
+    case "$target" in
+        x86_64-unknown-linux-gnu)
+            binary_name="alejandria-linux-x86_64"
+            ;;
+        x86_64-apple-darwin)
+            binary_name="alejandria-macos-x86_64"
+            ;;
+        aarch64-apple-darwin)
+            binary_name="alejandria-macos-aarch64"
+            ;;
+        *)
+            log_warn "No pre-built binary for target: $target"
+            return 1
+            ;;
+    esac
+    
+    local binary_path="$repo_dir/bin/$binary_name"
+    local checksum_path="${binary_path}.sha256"
+    
+    # Check if binary exists
+    if [ ! -f "$binary_path" ]; then
+        return 1
+    fi
+    
+    log_info "Found pre-built binary: $binary_path"
+    
+    # Verify checksum if available
+    if [ -f "$checksum_path" ]; then
+        log_info "Verifying checksum..."
+        cd "$(dirname "$binary_path")"
+        if command -v sha256sum >/dev/null 2>&1; then
+            if ! sha256sum -c "$(basename "$checksum_path")" >/dev/null 2>&1; then
+                log_error "Checksum verification failed"
+                cd - >/dev/null
+                return 1
+            fi
+        elif command -v shasum >/dev/null 2>&1; then
+            if ! shasum -a 256 -c "$(basename "$checksum_path")" >/dev/null 2>&1; then
+                log_error "Checksum verification failed"
+                cd - >/dev/null
+                return 1
+            fi
+        else
+            log_warn "No checksum tool found, skipping verification"
+        fi
+        cd - >/dev/null
+        log_success "Checksum verified"
+    fi
+    
+    # Install binary
+    mkdir -p "$INSTALL_DIR"
+    
+    if ! cp "$binary_path" "$INSTALL_DIR/alejandria" 2>/dev/null; then
+        cp "$binary_path" "$INSTALL_DIR/alejandria.new"
+        chmod +x "$INSTALL_DIR/alejandria.new"
+        log_warn "Installed as 'alejandria.new' (current binary is running)"
+        log_warn "After terminating any running instances, run:"
+        log_warn "  mv $INSTALL_DIR/alejandria.new $INSTALL_DIR/alejandria"
+    else
+        chmod +x "$INSTALL_DIR/alejandria"
+    fi
+    
+    log_success "Pre-built binary installed to $INSTALL_DIR/alejandria"
+    return 0
+}
+
 # Download and verify binary
 download_binary() {
     local version=$1
@@ -475,16 +548,23 @@ main() {
         fi
     fi
 
-    # Install binary (download or build)
+    # Install binary (priority order)
     if [ "$FORCE_BUILD" = "true" ]; then
         build_from_source || exit 1
     elif [ -f "$INSTALL_DIR/alejandria" ] && [ "$VERSION" = "$existing_version" ]; then
         log_success "Using existing binary v$VERSION"
     else
-        download_binary "$VERSION" "$target" || {
-            log_warn "Download failed, falling back to build from source"
+        # Try 1: Pre-built binary in repo (if we're in the repo)
+        if use_prebuilt_binary "$target" "." 2>/dev/null; then
+            log_success "Installed from pre-built binary"
+        # Try 2: Download from release/package registry
+        elif download_binary "$VERSION" "$target" 2>/dev/null; then
+            log_success "Downloaded and installed binary"
+        # Try 3: Build from source
+        else
+            log_warn "No pre-built binary or download available, building from source"
             build_from_source || exit 1
-        }
+        fi
     fi
 
     # Verify installation
