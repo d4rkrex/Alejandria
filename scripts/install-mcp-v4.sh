@@ -11,6 +11,7 @@ GITLAB_PROJECT="${GITLAB_PROJECT:-appsec/alejandria}"
 GITLAB_HOST="${GITLAB_HOST:-gitlab.veritran.net}"
 GITHUB_REPO="${GITHUB_REPO:-}"  # Fallback for public GitHub mirrors
 FORCE_BUILD="${FORCE_BUILD:-false}"
+KEEP_BUILD_CACHE="${KEEP_BUILD_CACHE:-false}"  # Set to true to preserve build artifacts
 
 # Determine source (prefer GitLab for Veritran internal use)
 if [ -n "$GITHUB_REPO" ]; then
@@ -235,6 +236,24 @@ build_from_source() {
         chmod +x "$INSTALL_DIR/alejandria"
     fi
 
+    # Clean up build artifacts to save disk space
+    if [ "$KEEP_BUILD_CACHE" = "false" ]; then
+        log_info "Cleaning build cache to free disk space..."
+        if [ "$repo_dir" != "$(pwd)" ]; then
+            # Only remove if it's in cache directory (not current dir)
+            local cache_size
+            cache_size=$(du -sh "$repo_dir" 2>/dev/null | cut -f1)
+            rm -rf "$repo_dir"
+            log_success "Cleaned build cache (freed ~$cache_size)"
+        else
+            # If using current directory, just clean target/
+            cargo clean 2>/dev/null || true
+            log_success "Cleaned build artifacts"
+        fi
+    else
+        log_info "Build cache preserved at: $repo_dir"
+    fi
+
     log_success "Binary built and installed to $INSTALL_DIR/alejandria"
     return 0
 }
@@ -429,9 +448,27 @@ main() {
         log_info "Latest version: $VERSION"
     fi
 
+    # Check if we already have a recent binary installed
+    if [ "$FORCE_BUILD" = "false" ] && [ -f "$INSTALL_DIR/alejandria" ]; then
+        local existing_version
+        existing_version=$("$INSTALL_DIR/alejandria" --version 2>/dev/null | awk '{print $2}' || echo "unknown")
+        
+        if [ "$existing_version" != "unknown" ]; then
+            log_info "Found existing installation: v$existing_version"
+            
+            # If we don't have a specific version, ask if user wants to keep existing
+            if [ "$VERSION" = "latest" ] || [ -z "$VERSION" ]; then
+                log_info "Skipping reinstall (use FORCE_BUILD=true to reinstall)"
+                VERSION="$existing_version"
+            fi
+        fi
+    fi
+
     # Install binary (download or build)
     if [ "$FORCE_BUILD" = "true" ]; then
         build_from_source || exit 1
+    elif [ -f "$INSTALL_DIR/alejandria" ] && [ "$VERSION" = "$existing_version" ]; then
+        log_success "Using existing binary v$VERSION"
     else
         download_binary "$VERSION" "$target" || {
             log_warn "Download failed, falling back to build from source"
