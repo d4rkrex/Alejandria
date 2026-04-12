@@ -108,8 +108,19 @@ download_binary() {
     # Construct download URLs based on source type
     if [ "$SOURCE_TYPE" = "gitlab" ]; then
         local project_path_encoded=$(echo "$GITLAB_PROJECT" | sed 's/\//%2F/g')
-        download_url="https://${GITLAB_HOST}/api/v4/projects/${project_path_encoded}/packages/generic/alejandria/${version}/${archive_name}"
-        checksum_url="${download_url}.sha256"
+        # First try: Release assets
+        local release_url="https://${GITLAB_HOST}/api/v4/projects/${project_path_encoded}/releases/${version}"
+        local release_data=$(curl -fsSL "$release_url" 2>/dev/null || echo "{}")
+        
+        # Extract download URLs from release assets
+        download_url=$(echo "$release_data" | grep -o '"url":"[^"]*'"${archive_name}"'"' | sed 's/"url":"//' | sed 's/"$//' | head -1)
+        checksum_url=$(echo "$release_data" | grep -o '"url":"[^"]*'"${archive_name}.sha256"'"' | sed 's/"url":"//' | sed 's/"$//' | head -1)
+        
+        # Fallback: Generic Package Registry (old method)
+        if [ -z "$download_url" ]; then
+            download_url="https://${GITLAB_HOST}/api/v4/projects/${project_path_encoded}/packages/generic/alejandria/${version}/${archive_name}"
+            checksum_url="${download_url}.sha256"
+        fi
     else
         download_url="https://github.com/${GITHUB_REPO}/releases/download/${version}/${archive_name}"
         checksum_url="${download_url}.sha256"
