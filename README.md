@@ -318,6 +318,123 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Agent Setup
+
+### Global Agent Configuration
+
+To ensure ALL your code agents use Alejandría effectively, set up global instructions:
+
+#### 1. Central Instructions File
+
+Create `~/.config/opencode/AGENT_INSTRUCTIONS.md`:
+
+```bash
+mkdir -p ~/.config/opencode
+curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/.config/opencode/AGENT_INSTRUCTIONS.md \
+  -o ~/.config/opencode/AGENT_INSTRUCTIONS.md
+```
+
+This file tells agents:
+- When to save memories (bug fixes, decisions, discoveries)
+- What NOT to save (obvious code, duplicates)
+- Memory structure template (What/Why/Where/Learned/Impact)
+- Pre-commit checklist
+
+#### 2. Install Memory Discipline Skill
+
+Symlink the skill for global access:
+
+```bash
+mkdir -p ~/.config/opencode/skills
+ln -s /path/to/alejandria/skills/memory-discipline \
+      ~/.config/opencode/skills/memory-discipline
+```
+
+**Or** if using the installer, it's already available at:
+```bash
+~/.local/share/alejandria/skills/memory-discipline/
+```
+
+#### 3. Configure Your Agent
+
+**For Claude Desktop** (or similar MCP-compatible agents):
+
+Add to your agent's system prompt or instructions:
+
+```markdown
+# Memory System Available
+
+You have access to Alejandría persistent memory via MCP.
+
+**MANDATORY**: Before saving ANY memory, read:
+~/.config/opencode/AGENT_INSTRUCTIONS.md
+~/.config/opencode/skills/memory-discipline/SKILL.md
+
+Quick rules:
+- Save immediately after completing tasks (not at session end)
+- Include WHY, not just WHAT
+- Use format: What/Why/Where/Learned/Impact
+- Save to appropriate topic
+```
+
+#### 4. Project-Specific Skills
+
+When working on projects with their own skills (like Alejandría itself):
+
+```bash
+cd /path/to/project
+cat AGENTS.md  # Check for project-specific skills
+```
+
+Projects may define skills for:
+- Code quality standards (`tui-quality`)
+- Testing requirements (`testing`)
+- Commit conventions (`commit-hygiene`)
+- Project-specific patterns
+
+### Verification
+
+Test that agents can access memory:
+
+```bash
+# Agent should be able to:
+alejandria topics          # List existing topics
+alejandria recall "test"   # Search memories
+alejandria store --content "Test memory" --topic "test"
+```
+
+If MCP is configured correctly, agents can call these via:
+- `mem_store()` - Save memory
+- `mem_recall()` - Search
+- `mem_list_topics()` - Browse topics
+
+### Memory Discipline Benefits
+
+When agents follow memory discipline:
+
+- ✅ **Knowledge retention**: Remember decisions 6 months later
+- ✅ **Faster debugging**: "We solved this before, how?"
+- ✅ **Team learning**: New contributors learn from past decisions
+- ✅ **Pattern recognition**: See recurring issues, fix root causes
+- ✅ **Continuous improvement**: Build organizational knowledge base
+
+**Target**: 1-3 high-quality memories per session (quality > quantity)
+
+### Example Agent Workflow
+
+```
+1. Agent starts task
+2. Checks memory: mem_recall("similar task keywords")
+3. Completes task
+4. IMMEDIATELY saves memory:
+   - Bug fix → symptoms + root cause
+   - Decision → alternatives + trade-offs
+   - Discovery → surprise + impact
+5. Session ends: Save summary with learnings
+```
+
+---
+
 ## Architecture
 
 Alejandria is organized as a 4-crate Cargo workspace:
