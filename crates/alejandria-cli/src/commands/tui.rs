@@ -12,9 +12,8 @@
 //! - Memory management with search, filter, and export
 //! - Backup/restore with export/import wizards
 
-use alejandria_core::store::TopicInfo;
-use alejandria_storage::{api_keys, ExportFormat, ExportOptions, Memory, MemoryStore, SqliteStore};
-use anyhow::{bail, Context, Result};
+use alejandria_storage::{api_keys, ExportFormat, Memory, MemoryStore, SqliteStore};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -31,10 +30,8 @@ use ratatui::{
     },
     Frame, Terminal,
 };
-use regex::Regex;
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write as IoWrite};
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::PathBuf;
 
 use crate::config::Config;
 
@@ -182,6 +179,9 @@ struct AppState {
     selected_topic_index: Option<usize>,
     memory_search_query: Option<String>,
     memory_filter_importance: Option<String>,
+    show_delete_confirmation: bool,
+    pagination_offset: usize,
+    selected_memory_index: Option<usize>,
 
     // Backup tab state
     export_wizard_state: ExportWizardState,
@@ -229,6 +229,9 @@ impl AppState {
             selected_topic_index: None,
             memory_search_query: None,
             memory_filter_importance: None,
+            show_delete_confirmation: false,
+            pagination_offset: 0,
+            selected_memory_index: None,
 
             // Backup tab state
             export_wizard_state: ExportWizardState::default(),
@@ -370,6 +373,55 @@ impl AppState {
             .and_then(|i| self.topics_list.get(i))
             .map(|(topic, _)| topic.as_str())
     }
+
+    fn filtered_memories(&self) -> Vec<&Memory> {
+        self.memories_list
+            .iter()
+            .filter(|m| {
+                // Filter by importance
+                if let Some(ref importance) = self.memory_filter_importance {
+                    if &m.importance.to_string().to_lowercase() != importance {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect()
+    }
+
+    fn selected_memory(&self) -> Option<&Memory> {
+        let filtered = self.filtered_memories();
+        self.selected_memory_index
+            .and_then(|idx| filtered.get(idx).copied())
+    }
+
+    fn next_memory(&mut self) {
+        let count = self.filtered_memories().len();
+        if count == 0 {
+            return;
+        }
+        let i = match self.selected_memory_index {
+            Some(i) if i >= count - 1 => 0,
+            Some(i) => i + 1,
+            None => 0,
+        };
+        self.selected_memory_index = Some(i);
+        self.memories_list_state.select(Some(i));
+    }
+
+    fn prev_memory(&mut self) {
+        let count = self.filtered_memories().len();
+        if count == 0 {
+            return;
+        }
+        let i = match self.selected_memory_index {
+            Some(0) => count - 1,
+            Some(i) => i - 1,
+            None => 0,
+        };
+        self.selected_memory_index = Some(i);
+        self.memories_list_state.select(Some(i));
+    }
 }
 
 /// Run the TUI admin dashboard
@@ -427,53 +479,214 @@ fn run_app(
                         (KeyCode::Char('q'), _) => return Ok(()),
                         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Ok(()),
 
-                        // Tab navigation
-                        (KeyCode::Tab, _) => app.current_tab = app.current_tab.next(),
-                        (KeyCode::BackTab, _) => app.current_tab = app.current_tab.prev(),
-                        (KeyCode::Char('1'), _) => app.current_tab = Tab::ApiKeys,
-                        (KeyCode::Char('2'), _) => app.current_tab = Tab::Stats,
-                        (KeyCode::Char('3'), _) => app.current_tab = Tab::ActivityLog,
-                        (KeyCode::Char('4'), _) => app.current_tab = Tab::Memories,
-                        (KeyCode::Char('5'), _) => app.current_tab = Tab::Backup,
-                        (KeyCode::Char('6'), _) => app.current_tab = Tab::Help,
+                        // Tab navigation with data loading
+                        (KeyCode::Tab, _) => {
+                            let prev_tab = app.current_tab;
+                            app.current_tab = app.current_tab.next();
+                            handle_tab_switch(app, store, prev_tab)?;
+                        }
+                        (KeyCode::BackTab, _) => {
+                            let prev_tab = app.current_tab;
+                            app.current_tab = app.current_tab.prev();
+                            handle_tab_switch(app, store, prev_tab)?;
+                        }
+                        (KeyCode::Char('1'), _) => {
+                            let prev_tab = app.current_tab;
+                            app.current_tab = Tab::ApiKeys;
+                            handle_tab_switch(app, store, prev_tab)?;
+                        }
+                        (KeyCode::Char('2'), _) => {
+                            let prev_tab = app.current_tab;
+                            app.current_tab = Tab::Stats;
+                            handle_tab_switch(app, store, prev_tab)?;
+                        }
+                        (KeyCode::Char('3'), _) => {
+                            let prev_tab = app.current_tab;
+                            app.current_tab = Tab::ActivityLog;
+                            handle_tab_switch(app, store, prev_tab)?;
+                        }
+                        (KeyCode::Char('4'), _) => {
+                            let prev_tab = app.current_tab;
+                            app.current_tab = Tab::Memories;
+                            handle_tab_switch(app, store, prev_tab)?;
+                        }
+                        (KeyCode::Char('5'), _) => {
+                            let prev_tab = app.current_tab;
+                            app.current_tab = Tab::Backup;
+                            handle_tab_switch(app, store, prev_tab)?;
+                        }
+                        (KeyCode::Char('6'), _) => {
+                            let prev_tab = app.current_tab;
+                            app.current_tab = Tab::Help;
+                            handle_tab_switch(app, store, prev_tab)?;
+                        }
 
                         // Help
                         (KeyCode::Char('?'), _) => app.show_help = true,
 
-                        // API Keys tab navigation (Vim style)
-                        (KeyCode::Char('j'), _) | (KeyCode::Down, _) => app.next_key(),
-                        (KeyCode::Char('k'), _) | (KeyCode::Up, _) => app.prev_key(),
-                        (KeyCode::Char('g'), _) => app.first_key(),
-                        (KeyCode::Char('G'), KeyModifiers::SHIFT) => app.last_key(),
+                        // Navigation (context-aware)
+                        (KeyCode::Char('j'), _) | (KeyCode::Down, _) => match app.current_tab {
+                            Tab::ApiKeys => app.next_key(),
+                            Tab::Memories => {
+                                if app.show_delete_confirmation {
+                                    // Do nothing during confirmation
+                                } else {
+                                    app.next_memory();
+                                }
+                            }
+                            _ => {}
+                        },
+                        (KeyCode::Char('k'), _) | (KeyCode::Up, _) => match app.current_tab {
+                            Tab::ApiKeys => app.prev_key(),
+                            Tab::Memories => {
+                                if app.show_delete_confirmation {
+                                    // Do nothing during confirmation
+                                } else {
+                                    app.prev_memory();
+                                }
+                            }
+                            _ => {}
+                        },
+                        (KeyCode::Char('g'), _) => {
+                            if app.current_tab == Tab::ApiKeys {
+                                app.first_key();
+                            }
+                        }
+                        (KeyCode::Char('G'), KeyModifiers::SHIFT) => {
+                            if app.current_tab == Tab::ApiKeys {
+                                app.last_key();
+                            }
+                        }
 
-                        // Actions
-                        (KeyCode::Char('r'), _) => {
+                        // Page navigation for Memories tab
+                        (KeyCode::PageDown, _) if app.current_tab == Tab::Memories => {
+                            app.pagination_offset += 50;
+                            // Reload memories with new offset
+                            if let Some(topic) = app.selected_topic() {
+                                app.memories_list = load_memories_for_topic_with_offset(
+                                    store,
+                                    topic,
+                                    50,
+                                    app.pagination_offset,
+                                )?;
+                            }
+                        }
+                        (KeyCode::PageUp, _) if app.current_tab == Tab::Memories => {
+                            if app.pagination_offset >= 50 {
+                                app.pagination_offset -= 50;
+                                if let Some(topic) = app.selected_topic() {
+                                    app.memories_list = load_memories_for_topic_with_offset(
+                                        store,
+                                        topic,
+                                        50,
+                                        app.pagination_offset,
+                                    )?;
+                                }
+                            }
+                        }
+
+                        // Delete confirmation handling
+                        (KeyCode::Char('y'), _)
+                            if app.show_delete_confirmation && app.current_tab == Tab::Memories =>
+                        {
+                            if let Some(memory) = app.selected_memory() {
+                                let memory_id = memory.id.clone();
+                                store.delete(&memory_id)?;
+                                app.memories_list.retain(|m| m.id != memory_id);
+                                if app.selected_memory_index.is_some()
+                                    && !app.memories_list.is_empty()
+                                {
+                                    let new_idx = app
+                                        .selected_memory_index
+                                        .unwrap()
+                                        .min(app.memories_list.len() - 1);
+                                    app.selected_memory_index = Some(new_idx);
+                                    app.memories_list_state.select(Some(new_idx));
+                                }
+                            }
+                            app.show_delete_confirmation = false;
+                        }
+                        (KeyCode::Char('n'), _) if app.show_delete_confirmation => {
+                            app.show_delete_confirmation = false;
+                        }
+                        (KeyCode::Esc, _) if app.show_delete_confirmation => {
+                            app.show_delete_confirmation = false;
+                        }
+
+                        // API Keys tab actions
+                        (KeyCode::Char('r'), _) if app.current_tab == Tab::ApiKeys => {
                             if let Some(key) = app.selected_key() {
                                 revoke_key_interactive(store, &key.id)?;
                                 reload_keys(app, store)?;
                             }
                         }
-                        (KeyCode::Char('R'), KeyModifiers::SHIFT) => {
+                        (KeyCode::Char('R'), KeyModifiers::SHIFT)
+                            if app.current_tab == Tab::ApiKeys =>
+                        {
                             if let Some(key) = app.selected_key() {
                                 revoke_user_interactive(store, &key.username)?;
                                 reload_keys(app, store)?;
                             }
                         }
-                        (KeyCode::Char('t'), _) => {
+                        (KeyCode::Char('t'), _) if app.current_tab == Tab::ApiKeys => {
                             app.show_revoked = !app.show_revoked;
                         }
-                        (KeyCode::Char('f'), _) => {
-                            app.input_mode = InputMode::Filter;
-                            app.input_buffer.clear();
-                        }
-                        (KeyCode::Char('/'), _) => {
-                            app.input_mode = InputMode::Search;
-                            app.input_buffer.clear();
-                        }
-                        (KeyCode::Char('c'), _) => {
+
+                        // Filter/Search (context-aware)
+                        (KeyCode::Char('f'), _) => match app.current_tab {
+                            Tab::ApiKeys => {
+                                app.input_mode = InputMode::Filter;
+                                app.input_buffer.clear();
+                            }
+                            Tab::Memories => {
+                                // Cycle through importance levels
+                                app.memory_filter_importance =
+                                    match app.memory_filter_importance.as_deref() {
+                                        None => Some("critical".to_string()),
+                                        Some("critical") => Some("high".to_string()),
+                                        Some("high") => Some("medium".to_string()),
+                                        Some("medium") => Some("low".to_string()),
+                                        Some("low") => None,
+                                        _ => None,
+                                    };
+                            }
+                            _ => {}
+                        },
+                        (KeyCode::Char('/'), _) => match app.current_tab {
+                            Tab::ApiKeys => {
+                                app.input_mode = InputMode::Search;
+                                app.input_buffer.clear();
+                            }
+                            Tab::Memories => {
+                                app.input_mode = InputMode::MemorySearch;
+                                app.input_buffer.clear();
+                            }
+                            _ => {}
+                        },
+                        (KeyCode::Char('c'), _) if app.current_tab == Tab::ApiKeys => {
                             // Clear filters
                             app.filter_user = None;
                             app.search_query = None;
+                        }
+
+                        // Memories tab actions
+                        (KeyCode::Char('e'), _)
+                            if app.current_tab == Tab::Memories
+                                && !app.show_delete_confirmation =>
+                        {
+                            if let Some(memory) = app.selected_memory() {
+                                let memory_id = memory.id.clone();
+                                app.input_mode = InputMode::ExportPath;
+                                app.input_buffer = format!("./memory-{}.json", &memory_id[..8]);
+                            }
+                        }
+                        (KeyCode::Char('d'), _)
+                            if app.current_tab == Tab::Memories
+                                && !app.show_delete_confirmation =>
+                        {
+                            if app.selected_memory().is_some() {
+                                app.show_delete_confirmation = true;
+                            }
                         }
 
                         _ => {}
@@ -511,13 +724,32 @@ fn run_app(
                                 }
                                 InputMode::MemorySearch => {
                                     if app.input_buffer.is_empty() {
-                                        // TODO: clear memory search when implemented
+                                        app.memory_search_query = None;
+                                        // Reload from topic if selected
+                                        if let Some(topic) = app.selected_topic() {
+                                            app.memories_list =
+                                                load_memories_for_topic(store, topic, Some(50))?;
+                                        }
                                     } else {
-                                        // TODO: apply memory search when implemented
+                                        // Execute FTS5 search
+                                        app.memory_search_query = Some(app.input_buffer.clone());
+                                        app.memories_list =
+                                            search_memories(store, &app.input_buffer, 50)?;
+                                        if !app.memories_list.is_empty() {
+                                            app.selected_memory_index = Some(0);
+                                            app.memories_list_state.select(Some(0));
+                                        }
                                     }
                                 }
-                                InputMode::ExportPath | InputMode::ImportPath => {
-                                    // TODO: handle path input when implemented
+                                InputMode::ExportPath => {
+                                    if let Some(memory) = app.selected_memory() {
+                                        let path = PathBuf::from(&app.input_buffer);
+                                        let json = serde_json::to_string_pretty(memory)?;
+                                        std::fs::write(&path, json)?;
+                                    }
+                                }
+                                InputMode::ImportPath => {
+                                    // Handled in Phase 3
                                 }
                                 _ => {}
                             }
@@ -558,10 +790,40 @@ fn load_memories_for_topic(
         .context("Failed to load memories for topic")
 }
 
+fn load_memories_for_topic_with_offset(
+    store: &SqliteStore,
+    topic: &str,
+    limit: usize,
+    offset: usize,
+) -> Result<Vec<Memory>> {
+    store
+        .get_by_topic(topic, Some(limit), Some(offset))
+        .context("Failed to load memories for topic with offset")
+}
+
 fn search_memories(store: &SqliteStore, query: &str, limit: usize) -> Result<Vec<Memory>> {
     store
         .search_by_keywords(query, limit)
         .context("Failed to search memories")
+}
+
+fn handle_tab_switch(app: &mut AppState, store: &SqliteStore, prev_tab: Tab) -> Result<()> {
+    // Only load data when switching TO Memories tab
+    if app.current_tab == Tab::Memories && prev_tab != Tab::Memories {
+        // Load topics
+        app.topics_list = load_topics(store)?;
+        if !app.topics_list.is_empty() {
+            app.selected_topic_index = Some(0);
+            // Load memories for first topic
+            app.memories_list = load_memories_for_topic(store, &app.topics_list[0].0, Some(50))?;
+            if !app.memories_list.is_empty() {
+                app.selected_memory_index = Some(0);
+                app.memories_list_state.select(Some(0));
+            }
+        }
+        app.pagination_offset = 0;
+    }
+    Ok(())
 }
 
 fn ui(f: &mut Frame, app: &AppState) {
@@ -906,12 +1168,33 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
                 ));
             }
 
+            if app.current_tab == Tab::Memories {
+                if app.show_delete_confirmation {
+                    parts = vec![Span::styled(
+                        "Delete memory? (y/n or Esc to cancel)",
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    )];
+                } else {
+                    parts.push(Span::raw(
+                        " | /:Search | f:Filter | e:Export | d:Delete | PgUp/PgDn",
+                    ));
+                }
+            }
+
             if let Some(ref user) = app.filter_user {
                 parts.push(Span::raw(format!(" | Filter: {}", user)));
             }
 
             if let Some(ref query) = app.search_query {
                 parts.push(Span::raw(format!(" | Search: {}", query)));
+            }
+
+            if let Some(ref importance) = app.memory_filter_importance {
+                parts.push(Span::raw(format!(" | Importance: {}", importance)));
+            }
+
+            if let Some(ref query) = app.memory_search_query {
+                parts.push(Span::raw(format!(" | Memory Search: {}", query)));
             }
 
             if app.show_revoked {
@@ -956,7 +1239,7 @@ fn render_status_bar(f: &mut Frame, app: &AppState, area: Rect) {
             Span::styled("Export Path: ", Style::default().fg(Color::Yellow)),
             Span::raw(&app.input_buffer),
             Span::styled(
-                " (Enter to continue, Esc to cancel)",
+                " (Enter to export, Esc to cancel)",
                 Style::default().fg(Color::DarkGray),
             ),
         ],
