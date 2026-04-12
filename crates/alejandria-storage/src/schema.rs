@@ -11,8 +11,8 @@ use alejandria_core::error::{IcmError, IcmResult};
 use rusqlite::Connection;
 
 /// Current schema version
-/// Updated to 3 for P0-5: BOLA protection (owner_key_hash column)
-pub const SCHEMA_VERSION: u32 = 3;
+/// Updated to 4 for P0-2: API Keys multi-key support (Migration 004)
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Embedding dimensions for multilingual-e5-base model
 pub const EMBEDDING_DIMS: u32 = 768;

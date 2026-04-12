@@ -98,6 +98,23 @@ const MIGRATIONS: &[Migration] = &[
             -- To fully remove, would need table recreation
         "#,
     },
+    // Migration 4: API Keys Multi-Key Support & Rotation (P0-2)
+    Migration {
+        version: 4,
+        description: "API Keys multi-key support with expiration, revocation, and audit trail - SECURITY P0-2",
+        up_sql: include_str!("migrations/004_api_keys.sql"),
+        down_sql: r#"
+            -- Drop indexes
+            DROP INDEX IF EXISTS idx_api_keys_key_hash;
+            DROP INDEX IF EXISTS idx_api_keys_username;
+            DROP INDEX IF EXISTS idx_api_keys_active;
+            DROP INDEX IF EXISTS idx_api_keys_expires;
+            DROP INDEX IF EXISTS idx_api_keys_created_at;
+            
+            -- Drop table
+            DROP TABLE IF EXISTS api_keys;
+        "#,
+    },
 ];
 
 /// Creates the schema_migrations table to track applied migrations.

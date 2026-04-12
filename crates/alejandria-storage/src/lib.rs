@@ -7,6 +7,7 @@
 //! - Vector search support via sqlite-vec for embeddings
 //! - Schema migration and validation
 //! - Efficient indexing for temporal queries
+//! - Multi-key API authentication with rotation support (P0-2)
 //!
 //! # Examples
 //!
@@ -19,6 +20,7 @@
 //! # }
 //! ```
 
+pub mod api_keys;
 pub mod export;
 pub mod import;
 pub mod memoir_store;

@@ -201,6 +201,17 @@ enum Commands {
         command: MemoirCommands,
     },
 
+    /// Admin operations (API key management)
+    #[command(after_help = "Examples:\n  \
+        alejandria admin generate-key --user alice --description \"Production key\" --expires-in 365\n  \
+        alejandria admin list-keys --user alice\n  \
+        alejandria admin revoke-key 42\n  \
+        alejandria admin revoke-user alice")]
+    Admin {
+        #[command(subcommand)]
+        command: AdminCommands,
+    },
+
     /// Start MCP server
     #[command(after_help = "Examples:\n  \
         alejandria serve\n  \
@@ -334,6 +345,69 @@ enum MemoirCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum AdminCommands {
+    /// Generate a new API key
+    #[command(
+        name = "generate-key",
+        after_help = "Example:\n  \
+        alejandria admin generate-key --user alice --description \"Production API key\" --expires-in 365"
+    )]
+    GenerateKey {
+        /// User ID for the API key
+        #[arg(long)]
+        user: String,
+
+        /// Optional description for the key
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Expiration in days (omit for no expiration)
+        #[arg(long)]
+        expires_in: Option<i64>,
+    },
+
+    /// List all API keys
+    #[command(
+        name = "list-keys",
+        after_help = "Examples:\n  \
+        alejandria admin list-keys\n  \
+        alejandria admin list-keys --user alice\n  \
+        alejandria admin list-keys --include-revoked"
+    )]
+    ListKeys {
+        /// Filter by user ID
+        #[arg(long)]
+        user: Option<String>,
+
+        /// Include revoked keys in listing
+        #[arg(long)]
+        include_revoked: bool,
+    },
+
+    /// Revoke a specific API key by ID
+    #[command(
+        name = "revoke-key",
+        after_help = "Example:\n  \
+        alejandria admin revoke-key 01ABCDEF..."
+    )]
+    RevokeKey {
+        /// API key ID to revoke (ULID)
+        key_id: String,
+    },
+
+    /// Revoke all API keys for a user
+    #[command(
+        name = "revoke-user",
+        after_help = "Example:\n  \
+        alejandria admin revoke-user alice"
+    )]
+    RevokeUser {
+        /// User ID whose keys should be revoked
+        user: String,
+    },
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -413,6 +487,19 @@ fn main() -> Result<()> {
                 concept,
                 depth,
             } => commands::memoir::inspect(memoir, concept, depth, cli.json),
+        },
+        Commands::Admin { command } => match command {
+            AdminCommands::GenerateKey {
+                user,
+                description,
+                expires_in,
+            } => commands::admin::generate_key(&user, description.as_deref(), expires_in, cli.json),
+            AdminCommands::ListKeys {
+                user,
+                include_revoked,
+            } => commands::admin::list_keys(user.as_deref(), include_revoked, cli.json),
+            AdminCommands::RevokeKey { key_id } => commands::admin::revoke_key(&key_id, cli.json),
+            AdminCommands::RevokeUser { user } => commands::admin::revoke_user(&user, cli.json),
         },
         Commands::Serve { http, bind } => commands::serve::run(http, bind),
     };
