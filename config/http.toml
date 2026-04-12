@@ -27,19 +27,39 @@ requests_per_minute = 100
 burst_size = 20
 
 [http.cors]
-# Restrict in production! Use specific domains
-allowed_origins = ["*"]
+# SECURITY: CORS Configuration
+# 
+# CRITICAL: Never use wildcard ["*"] in production!
+# List all trusted origins explicitly.
+#
+# Production example:
+# allowed_origins = [
+#     "https://ar-appsec-01.veritran.net",
+#     "https://admin.veritran.net"
+# ]
+#
+# Development note:
+# If allowed_origins is empty and environment is "development",
+# the server will allow all origins for easier local testing.
+# This behavior is AUTOMATICALLY DISABLED in production mode.
+#
+# To enable CORS, set environment variables:
+#   export ALEJANDRIA_CORS_ENABLED=true
+#   export ALEJANDRIA_CORS_ORIGINS="https://ar-appsec-01.veritran.net,https://admin.veritran.net"
+#
+# For production deployment, you MUST:
+# 1. Set ALEJANDRIA_ENV=production
+# 2. Provide specific HTTPS origins (no wildcards)
+# 3. Never use http:// origins (except localhost for testing)
+allowed_origins = []
 
 [auth]
-# API keys: Generate SHA-256 hash with:
-# echo -n "your-secret-key" | sha256sum
-# 
-# Example entries:
-# api_keys = [
-#     { name = "team-alpha", key = "team-alpha-secret-key-here" },
-#     { name = "team-beta", key = "team-beta-secret-key-here" },
-# ]
-api_keys = []
+# API keys: Plain text keys (hashed internally with SHA-256)
+# For production, use strong random keys:
+# openssl rand -base64 32
+api_keys = [
+    { name = "veritran-appsec", key = "alejandria-prod-initial-key-2026" },
+]
 
 [database]
 # Enable SQLCipher encryption (requires encryption feature)
@@ -51,6 +71,5 @@ encryption_key = ""
 
 [instance]
 # Unique instance ID for multi-tenant isolation
-# Generate with: uuidgen or python -c "import uuid; print(uuid.uuid4())"
 # IMPORTANT: Each deployment must have a unique ID
-instance_id = "00000000-0000-0000-0000-000000000000"
+instance_id = "8d7ac804-5808-48cf-8561-141bdf58bbe6"

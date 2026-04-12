@@ -82,11 +82,18 @@ pub struct Memory {
     pub duplicate_count: u32,
     pub last_seen_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
-    
+
     /// Advanced decay strategy fields
     pub decay_profile: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decay_params: Option<serde_json::Value>,
+
+    /// Owner identification (SHA-256 hash of API key that created this memory)
+    /// Special values:
+    /// - 'shared': Accessible by all users (system-wide knowledge)
+    /// - 'LEGACY_SYSTEM': Pre-migration memories (for backward compatibility)
+    /// - Otherwise: 64-char hex SHA-256 hash of the creating API key
+    pub owner_key_hash: String,
 }
 
 /// Memory importance levels affecting decay rates
@@ -216,6 +223,7 @@ impl Memory {
             deleted_at: None,
             decay_profile: None,
             decay_params: None,
+            owner_key_hash: String::new(), // Will be set by storage layer or handler
         }
     }
 
@@ -228,6 +236,16 @@ impl Memory {
     pub fn mark_accessed(&mut self) {
         self.access_count += 1;
         self.last_accessed = Utc::now();
+    }
+
+    /// Check if this memory is shared (accessible by all users)
+    pub fn is_shared(&self) -> bool {
+        self.owner_key_hash == "shared"
+    }
+
+    /// Check if this memory is a legacy memory (pre-migration, accessible by all)
+    pub fn is_legacy(&self) -> bool {
+        self.owner_key_hash == "LEGACY_SYSTEM"
     }
 }
 

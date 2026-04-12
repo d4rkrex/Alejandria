@@ -72,6 +72,32 @@ const MIGRATIONS: &[Migration] = &[
             -- For now, columns remain but are unused after rollback
         "#,
     },
+    // Migration 3: Add owner_key_hash for BOLA protection (P0-5)
+    Migration {
+        version: 3,
+        description: "Add owner_key_hash column for Broken Object Level Authorization (BOLA) protection - SECURITY P0-5",
+        up_sql: r#"
+            -- Add owner_key_hash column for ownership tracking
+            ALTER TABLE memories ADD COLUMN owner_key_hash TEXT;
+            
+            -- Create index for efficient ownership lookups
+            CREATE INDEX IF NOT EXISTS idx_memories_owner_key_hash ON memories(owner_key_hash);
+            
+            -- Backfill existing memories with legacy owner marker
+            -- This allows existing memories to be accessed by all users during transition period
+            UPDATE memories 
+            SET owner_key_hash = 'LEGACY_SYSTEM' 
+            WHERE owner_key_hash IS NULL;
+        "#,
+        down_sql: r#"
+            -- Drop index first
+            DROP INDEX IF EXISTS idx_memories_owner_key_hash;
+            
+            -- Note: SQLite doesn't support DROP COLUMN directly
+            -- Column remains but is unused after rollback
+            -- To fully remove, would need table recreation
+        "#,
+    },
 ];
 
 /// Creates the schema_migrations table to track applied migrations.
