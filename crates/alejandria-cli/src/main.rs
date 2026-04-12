@@ -212,6 +212,12 @@ enum Commands {
         command: AdminCommands,
     },
 
+    /// Interactive TUI admin dashboard
+    #[command(after_help = "Examples:\n  \
+        alejandria tui\n  \
+        alejandria admin tui")]
+    Tui,
+
     /// Start MCP server
     #[command(after_help = "Examples:\n  \
         alejandria serve\n  \
@@ -406,6 +412,14 @@ enum AdminCommands {
         /// User ID whose keys should be revoked
         user: String,
     },
+
+    /// Interactive TUI dashboard
+    #[command(
+        name = "tui",
+        after_help = "Example:\n  \
+        alejandria admin tui"
+    )]
+    Tui,
 }
 
 fn main() -> Result<()> {
@@ -500,7 +514,9 @@ fn main() -> Result<()> {
             } => commands::admin::list_keys(user.as_deref(), include_revoked, cli.json),
             AdminCommands::RevokeKey { key_id } => commands::admin::revoke_key(&key_id, cli.json),
             AdminCommands::RevokeUser { user } => commands::admin::revoke_user(&user, cli.json),
+            AdminCommands::Tui => commands::tui::run(),
         },
+        Commands::Tui => commands::tui::run(),
         Commands::Serve { http, bind } => commands::serve::run(http, bind),
     };
 
