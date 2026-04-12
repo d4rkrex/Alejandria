@@ -16,6 +16,7 @@ When working on this project, load the relevant skill(s) BEFORE writing any code
 | `alejandria-tui-quality` | Any change to TUI rendering, navigation, keybindings, or user interaction | [`skills/tui-quality/SKILL.md`](skills/tui-quality/SKILL.md) |
 | `alejandria-testing` | Adding features, fixing bugs, refactoring, or any behavior change | [`skills/testing/SKILL.md`](skills/testing/SKILL.md) |
 | `alejandria-commit-hygiene` | Creating commits, branches, or reviewing merge requests | [`skills/commit-hygiene/SKILL.md`](skills/commit-hygiene/SKILL.md) |
+| `alejandria-memory-discipline` | After completing tasks, making decisions, fixing bugs, or at session end | [`skills/memory-discipline/SKILL.md`](skills/memory-discipline/SKILL.md) |
 
 ## Planned Skills (TODO)
 
