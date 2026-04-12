@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod consolidate;
 pub mod decay;
 pub mod embed;

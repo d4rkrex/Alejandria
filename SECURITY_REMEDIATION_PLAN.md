@@ -132,9 +132,12 @@ curl -I https://localhost:8080/health | grep "Strict-Transport-Security"
 
 ---
 
-### P0-2: Migrar API Keys a Variables de Entorno
+### P0-2: Multi-Key Support con Database Management ✅ **COMPLETADO**
 
-**ID Original:** TM-001 (DREAD 8.2)  
+**ID Original:** TM-001 (DREAD 8.2 → 2.0)  
+**Status:** ✅ 100% Complete (2026-04-12)  
+**Tag:** v1.5.0-p0-2-complete  
+**Risk Reduction:** 75.6%  
 **Archivos afectados:**
 - `config/http.toml`
 - `crates/alejandria-cli/src/config.rs`
