@@ -1230,6 +1230,180 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
     f.render_widget(stats_text, chunks[1]);
 }
 
+// ========== Security Tests (Phase 5) ==========
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_ac001_path_traversal_prevention() {
+        // AC-001: Path traversal attack - should be blocked
+        let result = validate_export_path(Path::new("../../../etc/passwd"));
+        assert!(result.is_err(), "Path traversal should be blocked");
+        if let Err(e) = result {
+            let err_msg = e.to_string().to_lowercase();
+            // Can fail with either path traversal error or "no such file" (from canonicalize)
+            assert!(
+                err_msg.contains("path traversal")
+                    || err_msg.contains("does not exist")
+                    || err_msg.contains("no such file")
+                    || err_msg.contains("not found"),
+                "Error should mention path issue, got: {}",
+                err_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_filename_sanitization() {
+        let dangerous = "export; rm -rf /.json";
+        let safe = sanitize_filename(dangerous);
+        // Note: consecutive special chars become consecutive underscores
+        assert_eq!(safe, "export__rm_-rf__.json");
+        assert!(!safe.contains(";"), "Semicolon should be sanitized");
+        assert!(!safe.contains(" "), "Spaces should be sanitized");
+        assert!(!safe.contains("/"), "Slashes should be sanitized");
+    }
+
+    #[test]
+    fn test_ac001_relative_path_allowed() {
+        // Relative paths in current dir should work
+        let temp_dir = std::env::temp_dir();
+        std::env::set_current_dir(&temp_dir).unwrap();
+
+        // Create a test file in temp dir
+        let test_file = temp_dir.join("test_export.json");
+        std::fs::write(&test_file, "{}").unwrap();
+
+        let result = validate_export_path(Path::new("test_export.json"));
+        assert!(result.is_ok(), "Relative path in current dir should work");
+
+        // Cleanup
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    #[test]
+    fn test_ac004_secret_redaction_api_keys() {
+        // AC-004: Secret exfiltration prevention - API keys
+        let content = "API_KEY=sk-1234567890abcdefghij\nANOTHER_KEY=ghp_abcdefghijklmnopqrstuvwxyz123456789012";
+        let redacted = redact_secrets(content, true);
+        assert!(
+            !redacted.contains("sk-1234567890abcdefghij"),
+            "OpenAI key should be redacted"
+        );
+        assert!(
+            !redacted.contains("ghp_abcdefghijklmnopqrstuvwxyz123456789012"),
+            "GitHub token should be redacted"
+        );
+        assert!(
+            redacted.contains("[REDACTED]"),
+            "Should contain [REDACTED] marker"
+        );
+    }
+
+    #[test]
+    fn test_ac004_secret_redaction_passwords() {
+        let content = "PASSWORD=supersecret123\npwd: mypassword456";
+        let redacted = redact_secrets(content, true);
+        assert!(
+            !redacted.contains("supersecret123"),
+            "Password should be redacted"
+        );
+        assert!(
+            !redacted.contains("mypassword456"),
+            "pwd should be redacted"
+        );
+    }
+
+    #[test]
+    fn test_ac004_redaction_opt_out() {
+        let content = "API_KEY=sk-test1234567890abcdefghij";
+        let not_redacted = redact_secrets(content, false);
+        assert_eq!(not_redacted, content, "Should not redact when disabled");
+    }
+
+    #[test]
+    fn test_file_permissions() {
+        use std::io::Write;
+        let temp = std::env::temp_dir().join("alejandria_test_perms.txt");
+        let mut file = std::fs::File::create(&temp).unwrap();
+        file.write_all(b"test").unwrap();
+        drop(file);
+
+        set_secure_permissions(&temp).unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::metadata(&temp).unwrap().permissions();
+            assert_eq!(
+                perms.mode() & 0o777,
+                0o600,
+                "File permissions should be 600 (rw-------)"
+            );
+        }
+
+        std::fs::remove_file(&temp).unwrap();
+    }
+
+    #[test]
+    fn test_sha256_checksum() {
+        use std::io::Write;
+        let temp = std::env::temp_dir().join("alejandria_test_hash.txt");
+        let mut file = std::fs::File::create(&temp).unwrap();
+        file.write_all(b"test content").unwrap();
+        drop(file);
+
+        let hash = calculate_sha256(&temp).unwrap();
+        assert_eq!(hash.len(), 64, "SHA-256 hash should be 64 hex characters");
+        // Known SHA-256 of "test content"
+        assert_eq!(
+            hash,
+            "6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72"
+        );
+
+        std::fs::remove_file(&temp).unwrap();
+    }
+
+    #[test]
+    fn test_metadata_file_creation() {
+        use std::io::Write;
+        let temp = std::env::temp_dir().join("alejandria_test_export.json");
+        let mut file = std::fs::File::create(&temp).unwrap();
+        file.write_all(b"{}").unwrap();
+        drop(file);
+
+        let checksum = "abcd1234";
+        write_metadata_file(&temp, 42, checksum).unwrap();
+
+        let meta_path = temp.with_extension("json.meta");
+        assert!(meta_path.exists(), "Metadata file should be created");
+
+        let meta_content = fs::read_to_string(&meta_path).unwrap();
+        assert!(meta_content.contains("\"count\": 42"));
+        assert!(meta_content.contains("\"checksum\": \"abcd1234\""));
+        assert!(meta_content.contains("\"format\": \"json\""));
+        assert!(meta_content.contains("exported_at"));
+
+        std::fs::remove_file(&temp).unwrap();
+        std::fs::remove_file(&meta_path).unwrap();
+    }
+
+    #[test]
+    fn test_sanitize_all_dangerous_chars() {
+        let dangerous = "file$name`with;bad&chars|here.txt";
+        let safe = sanitize_filename(dangerous);
+        assert!(!safe.contains("$"));
+        assert!(!safe.contains("`"));
+        assert!(!safe.contains(";"));
+        assert!(!safe.contains("&"));
+        assert!(!safe.contains("|"));
+        assert!(safe.contains(".txt"), "Extension should be preserved");
+    }
+}
+
 fn render_activity_log_tab(f: &mut Frame, app: &AppState, area: Rect) {
     // Get recent activity (keys sorted by last_used_at or created_at)
     let mut recent_keys = app.keys.clone();
