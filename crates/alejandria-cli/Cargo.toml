@@ -38,6 +38,9 @@ regex = "1.10"
 ratatui = "0.26"
 crossterm = "0.27"
 
+# Security dependencies for backup operations
+sha2 = "0.10"
+
 [dev-dependencies]
 tempfile = "3.8"
 assert_cmd = "2.0"
