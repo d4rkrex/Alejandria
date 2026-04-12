@@ -12,7 +12,7 @@
 
 use alejandria_storage::{api_keys, SqliteStore};
 use anyhow::{Context, Result};
-use chrono::Utc;
+// use chrono::Utc; // Unused - keeping for future timestamp features
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -76,6 +76,7 @@ struct AppState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)] // NewKey reserved for future interactive key creation
 enum InputMode {
     Normal,
     Filter,
