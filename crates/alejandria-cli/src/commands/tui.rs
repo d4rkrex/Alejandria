@@ -743,6 +743,12 @@ fn run_app(
                                     // Do nothing during confirmation
                                 } else {
                                     app.next_topic();
+                                    // Reload memories for newly selected topic
+                                    if let Some(topic) = app.selected_topic() {
+                                        app.memories.memories_list =
+                                            load_memories_for_topic(store, topic, Some(50))?;
+                                        app.memories.pagination_offset = 0;
+                                    }
                                 }
                             }
                             Tab::Help => {
@@ -763,6 +769,12 @@ fn run_app(
                                     // Do nothing during confirmation
                                 } else {
                                     app.prev_topic();
+                                    // Reload memories for newly selected topic
+                                    if let Some(topic) = app.selected_topic() {
+                                        app.memories.memories_list =
+                                            load_memories_for_topic(store, topic, Some(50))?;
+                                        app.memories.pagination_offset = 0;
+                                    }
                                 }
                             }
                             Tab::Help => {
