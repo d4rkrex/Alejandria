@@ -38,7 +38,25 @@ Alejandria is a production-ready memory system for AI agents built in Rust, comb
 
 ## Quick Start
 
-### Installation
+### 30-Second Installation (Recommended)
+
+Get started in under 2 minutes with pre-built binaries:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash
+```
+
+The installer automatically:
+- Downloads the right binary for your platform (Linux/macOS, Intel/ARM)
+- Detects your MCP clients (OpenCode, Claude Desktop, VSCode)
+- Configures them with backup/rollback support
+- No compilation required!
+
+See [QUICKSTART.md](QUICKSTART.md) for detailed instructions.
+
+### Manual Installation (from source)
+
+If you prefer building from source or need a custom configuration:
 
 ```bash
 # Clone the repository
