@@ -154,8 +154,17 @@ download_binary() {
     
     # Install binary
     mkdir -p "$INSTALL_DIR"
-    cp "${tmp_dir}/alejandria-${version}-${target}/alejandria" "$INSTALL_DIR/alejandria"
-    chmod +x "$INSTALL_DIR/alejandria"
+    
+    # If binary is in use, install with temp name
+    if ! cp "${tmp_dir}/alejandria-${version}-${target}/alejandria" "$INSTALL_DIR/alejandria" 2>/dev/null; then
+        cp "${tmp_dir}/alejandria-${version}-${target}/alejandria" "$INSTALL_DIR/alejandria.new"
+        chmod +x "$INSTALL_DIR/alejandria.new"
+        log_warn "Installed as 'alejandria.new' (current binary is running)"
+        log_warn "After terminating any running instances, run:"
+        log_warn "  mv $INSTALL_DIR/alejandria.new $INSTALL_DIR/alejandria"
+    else
+        chmod +x "$INSTALL_DIR/alejandria"
+    fi
     
     # Cleanup
     rm -rf "$tmp_dir"
@@ -192,18 +201,39 @@ build_from_source() {
         git pull
     else
         log_info "Cloning repository from ${SOURCE_TYPE}..."
-        git clone "$repo_url" "$repo_dir"
-        cd "$repo_dir"
+        if ! git clone "$repo_url" "$repo_dir" 2>/dev/null; then
+            log_warn "Failed to clone from ${SOURCE_TYPE}. Checking for local repository..."
+            
+            # Try to use current directory if it's the Alejandria repo
+            if [ -f "Cargo.toml" ] && grep -q "alejandria" Cargo.toml 2>/dev/null; then
+                log_info "Using current directory as source"
+                repo_dir="$(pwd)"
+            else
+                log_error "Could not clone repository and no local source found"
+                return 1
+            fi
+        else
+            cd "$repo_dir"
+        fi
     fi
 
     # Build
     log_info "Building release binary..."
-    cargo build --release --features embeddings --package alejandria-cli --bin alejandria
+    cargo build --release --package alejandria-cli --bin alejandria
 
     # Install
     mkdir -p "$INSTALL_DIR"
-    cp target/release/alejandria "$INSTALL_DIR/alejandria"
-    chmod +x "$INSTALL_DIR/alejandria"
+    
+    # If binary is in use, install with temp name and instruct user to restart
+    if ! cp target/release/alejandria "$INSTALL_DIR/alejandria" 2>/dev/null; then
+        cp target/release/alejandria "$INSTALL_DIR/alejandria.new"
+        chmod +x "$INSTALL_DIR/alejandria.new"
+        log_warn "Installed as 'alejandria.new' (current binary is running)"
+        log_warn "After terminating any running instances, run:"
+        log_warn "  mv $INSTALL_DIR/alejandria.new $INSTALL_DIR/alejandria"
+    else
+        chmod +x "$INSTALL_DIR/alejandria"
+    fi
 
     log_success "Binary built and installed to $INSTALL_DIR/alejandria"
     return 0
