@@ -7,6 +7,39 @@ variables:
   RUST_BACKTRACE: "1"
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
 
+# Build binary for development/main (not release archives)
+build:dev:
+  stage: build
+  image: rust:latest
+  cache:
+    key:
+      files:
+        - Cargo.lock
+      prefix: dev-build
+    paths:
+      - .cargo/registry
+      - .cargo/git
+      - target
+  script:
+    - echo "Building development binary for x86_64-unknown-linux-gnu"
+    - cargo build --release --features embeddings --package alejandria-cli --bin alejandria
+    - mkdir -p bin
+    - cp target/release/alejandria bin/alejandria-linux-x86_64
+    - sha256sum bin/alejandria-linux-x86_64 > bin/alejandria-linux-x86_64.sha256
+    - echo "Version info:"
+    - bin/alejandria-linux-x86_64 --version
+  artifacts:
+    name: "${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - bin/alejandria-linux-x86_64
+      - bin/alejandria-linux-x86_64.sha256
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+  tags:
+    - docker
+
 # Cache configuration for Rust builds
 .cache_template: &cache_template
   key:
