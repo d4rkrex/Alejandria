@@ -43,13 +43,19 @@ Alejandria is a production-ready memory system for AI agents built in Rust, comb
 Get started in under 2 minutes with pre-built binaries:
 
 ```bash
+# Recommended: v5 installer (installs MCP server + skills)
+curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v5.sh | bash
+
+# Alternative: v4 installer (MCP server only, manual skill setup)
 curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash
 ```
 
-The installer automatically:
+The v5 installer automatically:
 - Downloads the right binary for your platform (Linux/macOS, Intel/ARM)
 - Detects your MCP clients (OpenCode, Claude Desktop, VSCode)
-- Configures them with backup/rollback support
+- **Installs skills globally** (`~/.config/opencode/skills/`)
+- **Creates agent instructions** (`~/.config/opencode/AGENT_INSTRUCTIONS.md`)
+- Configures clients with backup/rollback support
 - No compilation required!
 
 See [QUICKSTART.md](QUICKSTART.md) for detailed instructions.
@@ -319,6 +325,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 ## Agent Setup
+
+> **Note**: If you used the **v5 installer** (`install-mcp-v5.sh`), skills and instructions are **already installed globally**. You can skip to [Verification](#verification).
 
 ### Global Agent Configuration
 
