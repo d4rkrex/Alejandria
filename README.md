@@ -337,7 +337,7 @@ Create `~/.config/opencode/AGENT_INSTRUCTIONS.md`:
 
 ```bash
 mkdir -p ~/.config/opencode
-curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/.config/opencode/AGENT_INSTRUCTIONS.md \
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/docs/AGENT_INSTRUCTIONS.md \
   -o ~/.config/opencode/AGENT_INSTRUCTIONS.md
 ```
 
