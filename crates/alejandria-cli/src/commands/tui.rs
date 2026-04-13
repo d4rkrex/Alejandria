@@ -379,9 +379,6 @@ struct AppState {
 
     // Theme state
     current_theme: Theme,
-
-    // Animation state
-    tab_transition_frame: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -425,9 +422,6 @@ impl AppState {
 
             // Theme state
             current_theme: Theme::Default,
-
-            // Animation state
-            tab_transition_frame: 0,
         }
     }
 
@@ -587,34 +581,6 @@ impl AppState {
         self.memories
             .selected_memory_index
             .and_then(|idx| filtered.get(idx).copied())
-    }
-
-    fn next_memory(&mut self) {
-        let count = self.filtered_memories().len();
-        if count == 0 {
-            return;
-        }
-        let i = match self.memories.selected_memory_index {
-            Some(i) if i >= count - 1 => 0,
-            Some(i) => i + 1,
-            None => 0,
-        };
-        self.memories.selected_memory_index = Some(i);
-        self.memories.memories_list_state.select(Some(i));
-    }
-
-    fn prev_memory(&mut self) {
-        let count = self.filtered_memories().len();
-        if count == 0 {
-            return;
-        }
-        let i = match self.memories.selected_memory_index {
-            Some(0) => count - 1,
-            Some(i) => i - 1,
-            None => 0,
-        };
-        self.memories.selected_memory_index = Some(i);
-        self.memories.memories_list_state.select(Some(i));
     }
 }
 
@@ -1037,8 +1003,6 @@ fn run_app(
             }
         }
     }
-
-    Ok(())
 }
 
 // Helper functions for loading memories
@@ -1802,7 +1766,6 @@ fn render_stats_tab(f: &mut Frame, app: &AppState, area: Rect) {
 #[cfg(test)]
 mod security_tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_ac001_path_traversal_prevention() {
@@ -2885,7 +2848,6 @@ fn render_help_tab(f: &mut Frame, app: &AppState, area: Rect) {
     let pc = theme.primary_color();
     let sc = theme.secondary_color();
     let ac = theme.accent_color();
-    let suc = theme.success_color();
 
     let help_lines = vec![
         Line::from(""),
