@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Alejandria Installer v5
 # Intelligent installer with auto-download, MCP client detection, auto-configuration, AND skill installation
-# Usage: curl -fsSL https://raw.githubusercontent.com/USER/alejandria/main/scripts/install-mcp-v5.sh | bash
+# Usage: curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v5.sh | bash
 # For private GitLab repos: GITLAB_TOKEN=your_token ./scripts/install-mcp-v5.sh
 
 VERSION="${ALEJANDRIA_VERSION:-latest}"

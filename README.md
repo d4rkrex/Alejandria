@@ -2,9 +2,8 @@
 
 > Persistent memory system for AI agents combining sophisticated dual-memory architecture with agent-centric workflows
 
-[![CI](https://github.com/yourusername/alejandria/workflows/CI/badge.svg)](https://github.com/yourusername/alejandria/actions)
-[![codecov](https://codecov.io/gh/yourusername/alejandria/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/alejandria)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![GitLab CI](https://gitlab.veritran.net/appsec/alejandria/badges/main/pipeline.svg)](https://gitlab.veritran.net/appsec/alejandria/-/pipelines)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Overview
 
@@ -44,10 +43,10 @@ Get started in under 2 minutes with pre-built binaries:
 
 ```bash
 # Recommended: v5 installer (installs MCP server + skills)
-curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v5.sh | bash
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v5.sh | bash
 
 # Alternative: v4 installer (MCP server only, manual skill setup)
-curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v4.sh | bash
 ```
 
 The v5 installer automatically:
@@ -66,7 +65,7 @@ If you prefer building from source or need a custom configuration:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/alejandria.git
+git clone https://gitlab.veritran.net/appsec/alejandria.git
 cd alejandria
 
 # Build and install CLI
@@ -338,7 +337,7 @@ Create `~/.config/opencode/AGENT_INSTRUCTIONS.md`:
 
 ```bash
 mkdir -p ~/.config/opencode
-curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/.config/opencode/AGENT_INSTRUCTIONS.md \
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/.config/opencode/AGENT_INSTRUCTIONS.md \
   -o ~/.config/opencode/AGENT_INSTRUCTIONS.md
 ```
 

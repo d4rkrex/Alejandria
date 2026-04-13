@@ -15,7 +15,7 @@ version = "1.9.6"
 edition = "2021"
 authors = ["Alejandria Contributors"]
 license = "MIT"
-repository = "https://github.com/yourusername/alejandria"
+repository = "https://gitlab.veritran.net/appsec/alejandria"
 
 [workspace.dependencies]
 # Core dependencies

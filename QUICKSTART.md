@@ -5,7 +5,7 @@ Get Alejandria running in under 2 minutes with pre-built binaries.
 ## One-Line Installation
 
 ```bash
-curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/blob/main/scripts/install-mcp-v4.sh?ref_type=heads | bash
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v5.sh | bash
 ```
 
 That's it! The installer will:
@@ -193,20 +193,20 @@ If auto-download fails, the installer automatically falls back to building from 
 - Git
 - 10-20 minutes for compilation
 
-Or download manually from [Releases](https://github.com/mroldan/alejandria/releases):
+Or download manually from [GitLab Releases](https://gitlab.veritran.net/appsec/alejandria/-/releases):
 
 ```bash
-# Download for your platform
-curl -LO https://github.com/mroldan/alejandria/releases/download/v1.6.0/alejandria-v1.6.0-x86_64-unknown-linux-gnu.tar.gz
+# Download for your platform (example for Linux x86_64)
+curl -LO https://gitlab.veritran.net/appsec/alejandria/-/releases/v1.9.6/downloads/alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz
 
 # Verify checksum
-curl -LO https://github.com/mroldan/alejandria/releases/download/v1.6.0/alejandria-v1.6.0-x86_64-unknown-linux-gnu.tar.gz.sha256
-sha256sum -c alejandria-v1.6.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+curl -LO https://gitlab.veritran.net/appsec/alejandria/-/releases/v1.9.6/downloads/alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum -c alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz.sha256
 
 # Extract and install
-tar xzf alejandria-v1.6.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz
 mkdir -p ~/.local/bin
-cp alejandria-v1.6.0-x86_64-unknown-linux-gnu/alejandria ~/.local/bin/
+cp alejandria-v1.9.6-x86_64-unknown-linux-gnu/alejandria ~/.local/bin/
 chmod +x ~/.local/bin/alejandria
 ```
 
@@ -215,7 +215,7 @@ chmod +x ~/.local/bin/alejandria
 Run the installer again - it will replace the old binary:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v5.sh | bash
 ```
 
 Your config and database are preserved.
