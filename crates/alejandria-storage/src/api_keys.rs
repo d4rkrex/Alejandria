@@ -18,7 +18,7 @@
 //!
 //! ## P0-2 Implementation
 //!
-//! This module addresses SECURITY_REMEDIATION_PLAN.md P0-2:
+//! This module addresses the former P0-2 API key remediation item:
 //! - DREAD Score: 8.2 → 2.0 (75.6% reduction)
 //! - Replaces single-key limitation with database-backed multi-key support
 

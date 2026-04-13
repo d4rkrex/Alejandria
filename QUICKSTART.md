@@ -5,7 +5,7 @@ Get Alejandria running in under 2 minutes with pre-built binaries.
 ## One-Line Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/blob/main/scripts/install-mcp-v4.sh?ref_type=heads | bash
 ```
 
 That's it! The installer will:

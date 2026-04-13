@@ -104,7 +104,7 @@ openssl x509 -in certs/server-cert.pem -noout -enddate
 
 ### Proceso de Rotación
 
-Ver `scripts/setup-tls-autofirmado.sh` para regenerar certificados.
+Ver `../docs/HTTP_SETUP.md` para el flujo actual de regeneración y despliegue de certificados.
 
 ---
 
@@ -147,8 +147,8 @@ openssl x509 -in certs/server-cert.pem -text -noout | grep -A2 "Subject Alternat
 
 ## 📚 Referencias
 
-- [Guía TLS Autofirmado](../TLS_AUTOFIRMADO_GUIA.md)
-- [Análisis de Seguridad](../CERTIFICADOS_SEGURIDAD_DISTRIBUCION.md)
+- [Guía HTTP/TLS actual](../docs/HTTP_SETUP.md)
+- [Guía de despliegue](../docs/DEPLOYMENT.md)
 - [OpenSSL CA Tutorial](https://jamielinux.com/docs/openssl-certificate-authority/)
 - [OWASP Transport Layer Protection](https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html)
 
