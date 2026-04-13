@@ -8,7 +8,7 @@
 //!
 //! ## P0-2 Implementation
 //!
-//! This module implements SECURITY_REMEDIATION_PLAN.md P0-2:
+//! This module implements the former P0-2 authentication remediation item:
 //! - DREAD Score: 8.2 → 2.0 (75.6% reduction)
 //! - Multi-key support with per-user isolation
 //! - Expiration and revocation enforcement

@@ -37,6 +37,7 @@ inspirations/icm/
 # Build artifacts
 examples/python/__pycache__/
 examples/go/example_*
+deprecated/
 
 # ========================================
 # Certificados TLS - Claves Privadas
