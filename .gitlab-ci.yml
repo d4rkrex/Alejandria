@@ -38,7 +38,7 @@ build:dev:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_TAG
   tags:
-    - docker
+    - appsec
 
 # Cache configuration for Rust builds
 .cache_template: &cache_template
@@ -87,7 +87,7 @@ build:dev:
 build:linux-x86_64:
   <<: *build_template
   tags:
-    - docker
+    - appsec
   variables:
     BUILD_TARGET: x86_64-unknown-linux-gnu
 
