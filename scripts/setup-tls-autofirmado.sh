@@ -23,8 +23,8 @@ CERTS_DIR="$REPO_DIR/certs"
 CLIENT_CERTS_DIR="$HOME/.alejandria"
 
 # Servidor remoto
-SERVER_HOST="ar-appsec-01.veritran.net"
-SERVER_USER="mroldan"
+SERVER_HOST="your-server.example.com"
+SERVER_USER="deploy"
 SERVER_CERTS_DIR="/etc/alejandria/tls"
 SERVER_CONFIG="/etc/alejandria/http.toml"
 
@@ -41,7 +41,7 @@ CA_VALIDITY_DAYS=3650   # 10 años
 SERVER_VALIDITY_DAYS=730 # 2 años
 
 # API Key (desde security review)
-API_KEY="alejandria-prod-initial-key-2026"
+API_KEY="your-api-key-here"
 
 # ============================================================================
 # FUNCIONES AUXILIARES
@@ -195,7 +195,7 @@ subjectAltName = @alt_names
 
 [alt_names]
 DNS.1 = $SERVER_HOST
-DNS.2 = ar-appsec-01
+DNS.2 = your-server
 DNS.3 = localhost
 IP.1 = $SERVER_IP
 IP.2 = 127.0.0.1
@@ -381,7 +381,7 @@ step9_update_mcp_configs() {
     # OpenCode
     if [[ -f "$HOME/.config/opencode/opencode.json" ]]; then
         log_info "  Actualizando OpenCode..."
-        jq '.mcpServers.alejandria.command[2] = "https://ar-appsec-01.veritran.net:8443"' \
+        jq '.mcpServers.alejandria.command[2] = "https://your-server.example.com:8443"' \
            "$HOME/.config/opencode/opencode.json" > /tmp/opencode.json.tmp
         mv /tmp/opencode.json.tmp "$HOME/.config/opencode/opencode.json"
     fi
@@ -389,13 +389,13 @@ step9_update_mcp_configs() {
     # Claude Code CLI
     if [[ -f "$HOME/.claude.json" ]]; then
         log_info "  Actualizando Claude Code CLI..."
-        sed -i 's|http://ar-appsec-01.veritran.net:8080|https://ar-appsec-01.veritran.net:8443|g' "$HOME/.claude.json"
+        sed -i 's|http://your-server.example.com:8080|https://your-server.example.com:8443|g' "$HOME/.claude.json"
     fi
     
     # Claude Desktop
     if [[ -f "$HOME/.config/Claude/claude_desktop_config.json" ]]; then
         log_info "  Actualizando Claude Desktop..."
-        jq '.mcpServers.alejandria.args[2] = "https://ar-appsec-01.veritran.net:8443"' \
+        jq '.mcpServers.alejandria.args[2] = "https://your-server.example.com:8443"' \
            "$HOME/.config/Claude/claude_desktop_config.json" > /tmp/claude_desktop.json.tmp
         mv /tmp/claude_desktop.json.tmp "$HOME/.config/Claude/claude_desktop_config.json"
     fi
@@ -403,13 +403,13 @@ step9_update_mcp_configs() {
     # VSCode/Copilot
     if [[ -f "$HOME/.config/Code/User/settings.json" ]]; then
         log_info "  Actualizando VSCode/Copilot..."
-        sed -i 's|http://ar-appsec-01.veritran.net:8080|https://ar-appsec-01.veritran.net:8443|g' "$HOME/.config/Code/User/settings.json"
+        sed -i 's|http://your-server.example.com:8080|https://your-server.example.com:8443|g' "$HOME/.config/Code/User/settings.json"
     fi
     
     # GitHub Copilot CLI
     if [[ -f "$HOME/.copilot/mcp-config.json" ]]; then
         log_info "  Actualizando GitHub Copilot CLI..."
-        jq '.mcpServers.alejandria.args[2] = "https://ar-appsec-01.veritran.net:8443"' \
+        jq '.mcpServers.alejandria.args[2] = "https://your-server.example.com:8443"' \
            "$HOME/.copilot/mcp-config.json" > /tmp/copilot-mcp.json.tmp
         mv /tmp/copilot-mcp.json.tmp "$HOME/.copilot/mcp-config.json"
     fi

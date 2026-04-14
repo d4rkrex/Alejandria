@@ -455,7 +455,7 @@ mod tests {
             allowed_origins: vec![
                 "http://localhost:3000".to_string(),
                 "http://127.0.0.1:3000".to_string(),
-                "https://ar-appsec-01.veritran.net".to_string(),
+                "https://your-server.example.com".to_string(),
             ],
             allow_all_dev: false,
             max_age_secs: 3600,
@@ -470,8 +470,8 @@ mod tests {
         let cors = CorsConfig {
             enabled: true,
             allowed_origins: vec![
-                "https://ar-appsec-01.veritran.net".to_string(),
-                "https://admin.veritran.net".to_string(),
+                "https://your-server.example.com".to_string(),
+                "https://admin.example.com".to_string(),
             ],
             allow_all_dev: false,
             max_age_secs: 3600,

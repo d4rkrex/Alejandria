@@ -39,6 +39,9 @@ examples/python/__pycache__/
 examples/go/example_*
 deprecated/
 
+# Security review artifacts
+.vtspec/
+
 # ========================================
 # Certificados TLS - Claves Privadas
 # ========================================
