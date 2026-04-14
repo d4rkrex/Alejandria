@@ -22,7 +22,7 @@ build:dev:
       - target
   script:
     - echo "Building development binary for x86_64-unknown-linux-gnu"
-    - cargo build --release --features embeddings --package alejandria-cli --bin alejandria
+    - cargo build --release --bin alejandria
     - mkdir -p bin
     - cp target/release/alejandria bin/alejandria-linux-x86_64
     - sha256sum bin/alejandria-linux-x86_64 > bin/alejandria-linux-x86_64.sha256
