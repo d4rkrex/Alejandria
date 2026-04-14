@@ -5,7 +5,7 @@ Get Alejandria running in under 2 minutes with pre-built binaries.
 ## One-Line Installation
 
 ```bash
-curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v5.sh | bash
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install.sh | bash
 ```
 
 That's it! The installer will:
@@ -79,21 +79,21 @@ Replace `/home/YOUR_USER` with your actual home directory path.
 
 ```bash
 export ALEJANDRIA_INSTALL_DIR="$HOME/bin"
-curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash
+curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install.sh | bash
 ```
 
 ### Specific Version
 
 ```bash
 export ALEJANDRIA_VERSION="v1.6.0"
-curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash
+curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install.sh | bash
 ```
 
 ### Force Build from Source
 
 ```bash
 export FORCE_BUILD=true
-curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash
+curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install.sh | bash
 ```
 
 ## Testing MCP Integration
@@ -215,7 +215,7 @@ chmod +x ~/.local/bin/alejandria
 Run the installer again - it will replace the old binary:
 
 ```bash
-curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v5.sh | bash
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install.sh | bash
 ```
 
 Your config and database are preserved.

@@ -37,10 +37,10 @@ The installer script automatically detects and uses these binaries:
 
 ```bash
 # From repo root
-./scripts/install-mcp-v4.sh
+./scripts/install.sh
 
-# From anywhere (after git clone)
-curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v4.sh | bash
+# From anywhere (one-line install)
+curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install.sh | bash
 ```
 
 ## Update Binaries
