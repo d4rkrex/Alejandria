@@ -1,6 +1,7 @@
 stages:
   - build
   - release
+  - cleanup
 
 variables:
   CARGO_TERM_COLOR: always
@@ -19,7 +20,10 @@ build:dev:
     paths:
       - .cargo/registry
       - .cargo/git
-      - target
+      - target/release/.fingerprint
+      - target/release/build
+      - target/release/deps
+    policy: pull-push
   script:
     - echo "Building development binary for x86_64-unknown-linux-gnu"
     - cargo build --release --bin alejandria
@@ -28,6 +32,9 @@ build:dev:
     - sha256sum bin/alejandria-linux-x86_64 > bin/alejandria-linux-x86_64.sha256
     - echo "Version info:"
     - bin/alejandria-linux-x86_64 --version
+    - echo "Cleaning up large build artifacts..."
+    - rm -rf target/release/alejandria target/release/incremental
+    - du -sh target/ .cargo/ 2>/dev/null || true
   artifacts:
     name: "${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}"
     paths:
@@ -217,3 +224,18 @@ create_release:
       echo "Release ${CI_COMMIT_TAG} created successfully!"
   rules:
     - if: $CI_COMMIT_TAG =~ /^v.*/
+
+# Weekly cleanup job to prevent disk space issues
+cleanup:cache:
+  stage: cleanup
+  image: alpine:latest
+  script:
+    - echo "Cache cleanup triggered (runs weekly or manually)"
+    - echo "Note: GitLab Runner cache is cleaned automatically based on cache policy"
+    - echo "This job is a placeholder for manual cleanup triggers"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - when: manual
+  allow_failure: true
+  tags:
+    - appsec
