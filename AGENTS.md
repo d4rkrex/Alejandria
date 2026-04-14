@@ -9,14 +9,24 @@ When working on this project, load the relevant skill(s) BEFORE writing any code
 3. Follow ALL patterns and rules from the loaded skill
 4. Multiple skills can apply simultaneously
 
-## Skills
+## User Skills (Universal — For ANY Codebase)
+
+These skills teach agents how to USE Alejandría effectively with any project:
 
 | Skill | Trigger | Path |
 |-------|---------|------|
-| `alejandria-tui-quality` | Any change to TUI rendering, navigation, keybindings, or user interaction | [`skills/tui-quality/SKILL.md`](skills/tui-quality/SKILL.md) |
-| `alejandria-testing` | Adding features, fixing bugs, refactoring, or any behavior change | [`skills/testing/SKILL.md`](skills/testing/SKILL.md) |
-| `alejandria-commit-hygiene` | Creating commits, branches, or reviewing merge requests | [`skills/commit-hygiene/SKILL.md`](skills/commit-hygiene/SKILL.md) |
-| `alejandria-memory-discipline` | After completing tasks, making decisions, fixing bugs, or at session end | [`skills/memory-discipline/SKILL.md`](skills/memory-discipline/SKILL.md) |
+| `using-alejandria` | Working with any codebase where persistent memory is valuable | [`skills/using-alejandria/SKILL.md`](skills/using-alejandria/SKILL.md) |
+
+## Development Skills (Alejandría Contributors Only)
+
+These skills are for DEVELOPING Alejandría itself. Only loaded when contributing to this project:
+
+| Skill | Trigger | Path |
+|-------|---------|------|
+| `alejandria-tui-quality` | Any change to TUI rendering, navigation, keybindings, or user interaction | [`skills/dev/tui-quality/SKILL.md`](skills/dev/tui-quality/SKILL.md) |
+| `alejandria-testing` | Adding features, fixing bugs, refactoring, or any behavior change | [`skills/dev/testing/SKILL.md`](skills/dev/testing/SKILL.md) |
+| `alejandria-commit-hygiene` | Creating commits, branches, or reviewing merge requests | [`skills/dev/commit-hygiene/SKILL.md`](skills/dev/commit-hygiene/SKILL.md) |
+| `alejandria-memory-discipline` | After completing tasks, making decisions, fixing bugs, or at session end | [`skills/dev/memory-discipline/SKILL.md`](skills/dev/memory-discipline/SKILL.md) |
 
 ## Planned Skills (TODO)
 

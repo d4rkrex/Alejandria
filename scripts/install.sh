@@ -17,6 +17,7 @@ GITHUB_REPO="${GITHUB_REPO:-}"  # Fallback for public GitHub mirrors
 FORCE_BUILD="${FORCE_BUILD:-false}"
 KEEP_BUILD_CACHE="${KEEP_BUILD_CACHE:-false}"  # Set to true to preserve build artifacts
 INSTALL_SKILLS="${INSTALL_SKILLS:-true}"  # Set to false to skip skill installation
+INSTALL_DEV_SKILLS="${INSTALL_DEV_SKILLS:-false}"  # Set to true to also install development skills
 
 # Determine source (prefer GitLab for Veritran internal use)
 if [ -n "$GITHUB_REPO" ]; then
@@ -690,12 +691,14 @@ install_skills() {
     
     log_info "Found skills in: $skills_source"
     
-    # Install each skill
-    local installed_count=0
-    local installed_skills=()
+    # Install user skills (skills/* but not skills/dev/*)
+    local user_installed_count=0
+    local user_installed_skills=()
     local skill_name target_skill abs_skill_dir
     
-    # Find all skill directories and install them
+    log_info "Installing user skills..."
+    
+    # Find all skill directories in skills/ (excluding dev/)
     for skill_dir in "$skills_source"/*/ ; do
         # Skip if not a directory
         if [ ! -d "$skill_dir" ]; then
@@ -704,8 +707,8 @@ install_skills() {
         
         skill_name=$(basename "$skill_dir")
         
-        # Skip special directories
-        if [ "$skill_name" = "_shared" ]; then
+        # Skip special directories and dev directory
+        if [ "$skill_name" = "_shared" ] || [ "$skill_name" = "dev" ]; then
             continue
         fi
         
@@ -727,26 +730,88 @@ install_skills() {
         
         # Try symlink first (better for development), fall back to copy
         if ln -s "$abs_skill_dir" "$target_skill" 2>/dev/null; then
-            log_success "Linked skill: $skill_name (symlink)"
-            installed_skills+=("$skill_name")
-            installed_count=$((installed_count + 1))
+            log_success "Linked user skill: $skill_name (symlink)"
+            user_installed_skills+=("$skill_name")
+            user_installed_count=$((user_installed_count + 1))
         else
             # Fall back to copy
             if cp -r "$skill_dir" "$target_skill" 2>/dev/null; then
-                log_success "Installed skill: $skill_name (copy)"
-                installed_skills+=("$skill_name")
-                installed_count=$((installed_count + 1))
+                log_success "Installed user skill: $skill_name (copy)"
+                user_installed_skills+=("$skill_name")
+                user_installed_count=$((user_installed_count + 1))
             else
-                log_error "Failed to install skill: $skill_name"
+                log_error "Failed to install user skill: $skill_name"
             fi
         fi
     done
     
-    if [ $installed_count -eq 0 ]; then
-        log_warn "No skills installed (no SKILL.md files found)"
+    if [ $user_installed_count -eq 0 ]; then
+        log_warn "No user skills installed (no SKILL.md files found)"
     else
-        log_success "Installed $installed_count skill(s) to $SKILLS_DIR"
-        log_info "Skills installed: ${installed_skills[*]}"
+        log_success "Installed $user_installed_count user skill(s) to $SKILLS_DIR"
+        log_info "User skills installed: ${user_installed_skills[*]}"
+    fi
+    
+    # Install development skills if requested
+    if [ "$INSTALL_DEV_SKILLS" = "true" ]; then
+        local dev_installed_count=0
+        local dev_installed_skills=()
+        
+        log_info "Installing development skills..."
+        
+        if [ -d "$skills_source/dev" ]; then
+            for skill_dir in "$skills_source/dev"/*/ ; do
+                # Skip if not a directory
+                if [ ! -d "$skill_dir" ]; then
+                    continue
+                fi
+                
+                skill_name=$(basename "$skill_dir")
+                
+                # Verify it's a valid skill (has SKILL.md)
+                if [ ! -f "$skill_dir/SKILL.md" ]; then
+                    log_warn "Skipping dev skill $skill_name (no SKILL.md found)"
+                    continue
+                fi
+                
+                target_skill="$SKILLS_DIR/$skill_name"
+                
+                # Remove existing installation
+                if [ -e "$target_skill" ]; then
+                    rm -rf "$target_skill"
+                fi
+                
+                # Get absolute path for symlink
+                abs_skill_dir=$(cd "$skill_dir" && pwd) || continue
+                
+                # Try symlink first (better for development), fall back to copy
+                if ln -s "$abs_skill_dir" "$target_skill" 2>/dev/null; then
+                    log_success "Linked dev skill: $skill_name (symlink)"
+                    dev_installed_skills+=("$skill_name")
+                    dev_installed_count=$((dev_installed_count + 1))
+                else
+                    # Fall back to copy
+                    if cp -r "$skill_dir" "$target_skill" 2>/dev/null; then
+                        log_success "Installed dev skill: $skill_name (copy)"
+                        dev_installed_skills+=("$skill_name")
+                        dev_installed_count=$((dev_installed_count + 1))
+                    else
+                        log_error "Failed to install dev skill: $skill_name"
+                    fi
+                fi
+            done
+            
+            if [ $dev_installed_count -eq 0 ]; then
+                log_warn "No development skills installed (no SKILL.md files found)"
+            else
+                log_success "Installed $dev_installed_count development skill(s) to $SKILLS_DIR"
+                log_info "Development skills installed: ${dev_installed_skills[*]}"
+            fi
+        else
+            log_warn "No skills/dev/ directory found"
+        fi
+    else
+        log_info "Skipping development skills (set INSTALL_DEV_SKILLS=true to include)"
     fi
     
     # Install global agent instructions
