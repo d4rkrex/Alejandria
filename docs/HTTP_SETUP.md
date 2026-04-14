@@ -41,7 +41,7 @@ Alejandria HTTP transport enables:
 ### 1. Build Alejandria with HTTP Transport
 
 ```bash
-# On remote server (ar-appsec-01.veritran.net)
+# On remote server (your-server.example.com)
 cd /veritran/alejandria-build
 source ~/.cargo/env
 

@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Configuration
-REMOTE_SERVER="ar-appsec-01.veritran.net"
+REMOTE_SERVER="your-server.example.com"
 BUILD_DIR="/veritran/alejandria-build"
 INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/var/lib/alejandria"

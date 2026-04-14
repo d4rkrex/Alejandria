@@ -14,7 +14,7 @@ Este directorio contiene los **certificados públicos** para TLS de Alejandría.
 
 ### ❌ Archivos NO Versionados (Privados - Git Ignore)
 
-Estos archivos existen **solo en el servidor** `ar-appsec-01.veritran.net`:
+Estos archivos existen **solo en el servidor** `your-server.example.com`:
 
 | Archivo | Descripción | Ubicación |
 |---------|-------------|-----------|
@@ -73,8 +73,8 @@ cp certs/ca-cert.pem ~/.alejandria/
 
 # Test manual con curl
 curl --cacert ~/.alejandria/ca-cert.pem \
-     -H 'X-API-Key: alejandria-prod-initial-key-2026' \
-     https://ar-appsec-01.veritran.net/alejandria/health
+     -H 'X-API-Key: your-api-key-here' \
+     https://your-server.example.com/alejandria/health
 ```
 
 **Ventaja:** No requiere permisos sudo

@@ -34,8 +34,8 @@ burst_size = 20
 #
 # Production example:
 # allowed_origins = [
-#     "https://ar-appsec-01.veritran.net",
-#     "https://admin.veritran.net"
+#     "https://your-server.example.com",
+#     "https://admin.example.com"
 # ]
 #
 # Development note:
@@ -45,7 +45,7 @@ burst_size = 20
 #
 # To enable CORS, set environment variables:
 #   export ALEJANDRIA_CORS_ENABLED=true
-#   export ALEJANDRIA_CORS_ORIGINS="https://ar-appsec-01.veritran.net,https://admin.veritran.net"
+#   export ALEJANDRIA_CORS_ORIGINS="https://your-server.example.com,https://admin.example.com"
 #
 # For production deployment, you MUST:
 # 1. Set ALEJANDRIA_ENV=production
@@ -58,7 +58,7 @@ allowed_origins = []
 # For production, use strong random keys:
 # openssl rand -base64 32
 api_keys = [
-    { name = "veritran-appsec", key = "alejandria-prod-initial-key-2026" },
+    { name = "veritran-appsec", key = "your-api-key-here" },
 ]
 
 [database]
