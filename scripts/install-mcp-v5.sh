@@ -67,9 +67,30 @@ detect_platform() {
     echo "$target"
 }
 
+# Get version from Cargo.toml workspace (most reliable source)
+get_cargo_version() {
+    local repo_dir="${1:-.}"
+    local cargo_toml="$repo_dir/Cargo.toml"
+    
+    if [ -f "$cargo_toml" ]; then
+        # Extract version from [workspace.package] section
+        grep -A 10 '^\[workspace\.package\]' "$cargo_toml" | grep '^version' | head -1 | sed -E 's/version\s*=\s*"([^"]+)".*/\1/'
+    fi
+}
+
 # Get latest release version from GitLab or GitHub
 get_latest_version() {
     local api_url
+    
+    # First, try to get version from local Cargo.toml if we're in the repo
+    if [ -f "Cargo.toml" ]; then
+        local cargo_version
+        cargo_version=$(get_cargo_version ".")
+        if [ -n "$cargo_version" ]; then
+            echo "$cargo_version"
+            return 0
+        fi
+    fi
     
     if [ "$SOURCE_TYPE" = "gitlab" ]; then
         # GitLab API: get latest tag
@@ -671,40 +692,62 @@ install_skills() {
     
     # Install each skill
     local installed_count=0
+    local installed_skills=()
+    local skill_name target_skill abs_skill_dir
+    
+    # Find all skill directories and install them
     for skill_dir in "$skills_source"/*/ ; do
+        # Skip if not a directory
         if [ ! -d "$skill_dir" ]; then
             continue
         fi
         
-        local skill_name=$(basename "$skill_dir")
+        skill_name=$(basename "$skill_dir")
         
         # Skip special directories
         if [ "$skill_name" = "_shared" ]; then
             continue
         fi
         
-        local target_skill="$SKILLS_DIR/$skill_name"
+        # Verify it's a valid skill (has SKILL.md)
+        if [ ! -f "$skill_dir/SKILL.md" ]; then
+            log_warn "Skipping $skill_name (no SKILL.md found)"
+            continue
+        fi
+        
+        target_skill="$SKILLS_DIR/$skill_name"
         
         # Remove existing installation
         if [ -e "$target_skill" ]; then
             rm -rf "$target_skill"
         fi
         
-        # Create symlink to source (if possible) or copy
-        if [ -d "$skills_source/$skill_name" ]; then
-            # Try symlink first (better for development)
-            if ln -s "$(cd "$skills_source/$skill_name" && pwd)" "$target_skill" 2>/dev/null; then
-                log_success "Linked skill: $skill_name (symlink)"
-            else
-                # Fall back to copy
-                cp -r "$skills_source/$skill_name" "$target_skill"
+        # Get absolute path for symlink
+        abs_skill_dir=$(cd "$skill_dir" && pwd) || continue
+        
+        # Try symlink first (better for development), fall back to copy
+        if ln -s "$abs_skill_dir" "$target_skill" 2>/dev/null; then
+            log_success "Linked skill: $skill_name (symlink)"
+            installed_skills+=("$skill_name")
+            installed_count=$((installed_count + 1))
+        else
+            # Fall back to copy
+            if cp -r "$skill_dir" "$target_skill" 2>/dev/null; then
                 log_success "Installed skill: $skill_name (copy)"
+                installed_skills+=("$skill_name")
+                installed_count=$((installed_count + 1))
+            else
+                log_error "Failed to install skill: $skill_name"
             fi
-            ((installed_count++))
         fi
     done
     
-    log_success "Installed $installed_count skill(s) to $SKILLS_DIR"
+    if [ $installed_count -eq 0 ]; then
+        log_warn "No skills installed (no SKILL.md files found)"
+    else
+        log_success "Installed $installed_count skill(s) to $SKILLS_DIR"
+        log_info "Skills installed: ${installed_skills[*]}"
+    fi
     
     # Install global agent instructions
     install_agent_instructions
