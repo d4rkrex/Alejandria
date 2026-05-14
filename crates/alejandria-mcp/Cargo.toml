@@ -34,7 +34,7 @@ hyper = { version = "1", optional = true }
 
 # Security - constant-time comparison (always available for security)
 subtle = "2.6"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 uuid = { version = "1.8", features = ["v4", "serde"] }
 
