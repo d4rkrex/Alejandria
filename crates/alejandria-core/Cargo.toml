@@ -16,7 +16,7 @@ toml = { workspace = true }
 
 # Embeddings support (feature-gated)
 fastembed = { version = "4", optional = true }
-directories = { version = "5", optional = true }
+directories = { version = "6", optional = true }
 
 [features]
 default = ["embeddings"]
