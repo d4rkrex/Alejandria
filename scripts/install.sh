@@ -375,15 +375,19 @@ download_binary() {
     # Install binary
     mkdir -p "$INSTALL_DIR"
     
-    # If binary is in use, install with temp name
-    if ! cp "${tmp_dir}/alejandria-${version}-${target}/alejandria" "$INSTALL_DIR/alejandria" 2>/dev/null; then
+    # If binary is in use, try to replace it anyway (overwrite), fallback to .new
+    if cp "${tmp_dir}/alejandria-${version}-${target}/alejandria" "$INSTALL_DIR/alejandria" 2>/dev/null; then
+        chmod +x "$INSTALL_DIR/alejandria"
+    else
         cp "${tmp_dir}/alejandria-${version}-${target}/alejandria" "$INSTALL_DIR/alejandria.new"
         chmod +x "$INSTALL_DIR/alejandria.new"
-        log_warn "Installed as 'alejandria.new' (current binary is running)"
-        log_warn "After terminating any running instances, run:"
-        log_warn "  mv $INSTALL_DIR/alejandria.new $INSTALL_DIR/alejandria"
-    else
-        chmod +x "$INSTALL_DIR/alejandria"
+        # Try atomic replace via rename
+        mv "$INSTALL_DIR/alejandria.new" "$INSTALL_DIR/alejandria" 2>/dev/null && \
+            log_success "Binary replaced successfully" || {
+            log_warn "Installed as 'alejandria.new' (current binary is running)"
+            log_warn "After terminating any running instances, run:"
+            log_warn "  mv $INSTALL_DIR/alejandria.new $INSTALL_DIR/alejandria"
+        }
     fi
     
     # Cleanup
@@ -985,14 +989,20 @@ main() {
         fi
     fi
 
-    # Verify installation
-    if ! "$INSTALL_DIR/alejandria" --version >/dev/null 2>&1; then
-        log_error "Installation verification failed"
-        exit 1
+    # Verify installation (also accept .new if mv didn't complete)
+    local verify_bin="$INSTALL_DIR/alejandria"
+    if ! "$verify_bin" --version >/dev/null 2>&1; then
+        if [ -x "$INSTALL_DIR/alejandria.new" ]; then
+            verify_bin="$INSTALL_DIR/alejandria.new"
+            log_warn "Verification using alejandria.new — run: mv $INSTALL_DIR/alejandria.new $INSTALL_DIR/alejandria"
+        else
+            log_error "Installation verification failed"
+            exit 1
+        fi
     fi
-    
+
     local installed_version
-    installed_version=$("$INSTALL_DIR/alejandria" --version | awk '{print $2}')
+    installed_version=$("$verify_bin" --version | awk '{print $2}')
     log_success "Alejandria $installed_version installed successfully"
 
     # Add to PATH if not already there
