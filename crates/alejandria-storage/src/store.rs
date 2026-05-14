@@ -1258,7 +1258,7 @@ impl SqliteStore {
                     query.push_str("keywords LIKE ?");
                     params.push(Box::new(format!("%{}%", tag)));
                 }
-                query.push_str(")");
+                query.push(')');
             }
         }
 
@@ -1296,7 +1296,7 @@ impl SqliteStore {
                     writer,
                     "  \"metadata\": {},",
                     serde_json::to_string_pretty(&metadata)
-                        .map_err(|e| IcmError::Serialization(e))?
+                        .map_err(IcmError::Serialization)?
                 )?;
                 writeln!(writer, "  \"memories\": [")?;
             }
@@ -1926,7 +1926,7 @@ impl MemoryStore for SqliteStore {
     /// # Arguments
     ///
     /// * `base_rate` - Base decay rate multiplier (typically 0.01-0.10). Higher values = faster decay.
-    ///                 This is passed to each strategy's `calculate_decay()` method.
+    ///   This is passed to each strategy's `calculate_decay()` method.
     ///
     /// # Returns
     ///
@@ -2530,7 +2530,7 @@ impl MemoryStore for SqliteStore {
             // Serialize params to JSON string if provided
             let params_json = params
                 .as_ref()
-                .map(|p| serde_json::to_string(p))
+                .map(serde_json::to_string)
                 .transpose()?;
 
             conn.execute(

@@ -140,11 +140,11 @@ pub fn export_json<W: Write>(
 
         let json = if options.selected_fields.is_empty() {
             // Export all fields
-            serde_json::to_string_pretty(memory).map_err(|e| IcmError::Serialization(e))?
+            serde_json::to_string_pretty(memory).map_err(IcmError::Serialization)?
         } else {
             // Export selected fields only
             let mut map = serde_json::Map::new();
-            let full = serde_json::to_value(memory).map_err(|e| IcmError::Serialization(e))?;
+            let full = serde_json::to_value(memory).map_err(IcmError::Serialization)?;
 
             if let serde_json::Value::Object(obj) = full {
                 for field in &options.selected_fields {
@@ -154,7 +154,7 @@ pub fn export_json<W: Write>(
                 }
             }
 
-            serde_json::to_string_pretty(&map).map_err(|e| IcmError::Serialization(e))?
+            serde_json::to_string_pretty(&map).map_err(IcmError::Serialization)?
         };
 
         write!(writer, "{}", json)?;
@@ -221,8 +221,8 @@ pub fn export_csv<W: Write>(
                 &memory.last_accessed.to_rfc3339(),
                 &memory.access_count.to_string(),
                 &format!("{:.3}", memory.weight),
-                &memory.decay_profile.as_ref().unwrap_or(&"none".to_string()),
-                &memory.topic_key.as_ref().unwrap_or(&"".to_string()),
+                memory.decay_profile.as_deref().unwrap_or("none"),
+                memory.topic_key.as_deref().unwrap_or(""),
                 &memory.revision_count.to_string(),
             ])
             .map_err(|e| {
