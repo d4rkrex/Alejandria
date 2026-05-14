@@ -65,3 +65,7 @@ certs-private/
 # CSR files (pueden contener info sensible)
 *.csr
 *.req
+
+# Backup files
+*.bak
+*.orig
