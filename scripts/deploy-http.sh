@@ -6,7 +6,7 @@ set -euo pipefail
 
 # Configuration
 REMOTE_SERVER="your-server.example.com"
-BUILD_DIR="/veritran/alejandria-build"
+BUILD_DIR="/opt/alejandria-build"
 INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/var/lib/alejandria"
 CONFIG_DIR="/etc/alejandria"

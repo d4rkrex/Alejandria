@@ -42,7 +42,7 @@ Alejandria HTTP transport enables:
 
 ```bash
 # On remote server (your-server.example.com)
-cd /veritran/alejandria-build
+cd /opt/alejandria-build
 source ~/.cargo/env
 
 # Build with HTTP transport and encryption features

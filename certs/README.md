@@ -1,175 +1,118 @@
-# Certificados TLS para Alejandría MCP
+# TLS Certificates
 
-## 📋 Contenido de este Directorio
+This directory is intentionally empty. Certificates are **not** stored in the repository.
 
-Este directorio contiene los **certificados públicos** para TLS de Alejandría.
-
-### ✅ Archivos Versionados (Públicos - Seguros para compartir)
-
-| Archivo | Descripción | Uso |
-|---------|-------------|-----|
-| `ca-cert.pem` | Certificado público del CA raíz | Instalar en clientes para confiar en TLS |
-| `server-cert.pem` | Certificado público del servidor | Usado por Caddy reverse proxy |
-| `README.md` | Este archivo | Documentación |
-
-### ❌ Archivos NO Versionados (Privados - Git Ignore)
-
-Estos archivos existen **solo en el servidor** `your-server.example.com`:
-
-| Archivo | Descripción | Ubicación |
-|---------|-------------|-----------|
-| `ca-key.pem` | Clave privada del CA | Servidor (NUNCA versionar) |
-| `server-key.pem` | Clave privada del servidor | Caddy container |
-| `*.csr` | Certificate Signing Requests | Temporal (no se versiona) |
+Generate your own certificates using the steps below, or use an existing CA (Let's Encrypt, corporate PKI, etc.).
 
 ---
 
-## 🔐 Seguridad
+## Option A: Self-signed CA (for local/private networks)
 
-### ¿Es seguro versionar estos certificados públicos?
+> Use this when Alejandría runs on a private network without public DNS.
 
-**SÍ, 100% seguro.**
+### 1. Generate the CA root key and certificate
 
-Los certificados públicos (`.pem`, `.crt`) contienen solo la **clave pública**, que por diseño es información pública. 
+```bash
+# Create a private key for your CA (keep this secret, never commit it)
+openssl genrsa -out certs/ca-key.pem 4096
 
-**Analogía:** Es como compartir un candado. Cualquiera puede usarlo para cerrar algo, pero solo quien tiene la llave (clave privada) puede abrirlo.
+# Self-sign the CA certificate (valid 10 years)
+openssl req -new -x509 -days 3650 -key certs/ca-key.pem \
+  -out certs/ca-cert.pem \
+  -subj "/C=US/ST=YourState/L=YourCity/O=YourOrg/CN=Alejandria CA"
+```
 
-**Lo que NO puedes hacer con `ca-cert.pem`:**
-- ❌ Descifrar tráfico TLS
-- ❌ Generar nuevos certificados válidos
-- ❌ Hacer MITM attacks
-- ❌ Impersonar el servidor
+### 2. Generate the server key and certificate
 
-**Lo que SÍ puedes hacer:**
-- ✅ Verificar certificados firmados por este CA
-- ✅ Confiar en conexiones TLS de Alejandría
-- ✅ Saber que Alejandría usa TLS (info no sensible)
+```bash
+# Server private key
+openssl genrsa -out certs/server-key.pem 4096
 
----
+# Create config with Subject Alternative Names
+cat > certs/server-cert.cnf << 'CONF'
+[req]
+default_bits       = 4096
+distinguished_name = req_distinguished_name
+req_extensions     = v3_req
+prompt             = no
 
-## 📥 Instalación para Desarrolladores
+[req_distinguished_name]
+C  = US
+ST = YourState
+L  = YourCity
+O  = YourOrg
+CN = your-server.example.com
 
-### Opción A: Instalar CA Cert en Sistema (Recomendado)
+[v3_req]
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = your-server.example.com
+DNS.2 = localhost
+IP.1  = 127.0.0.1
+CONF
+
+# Generate CSR
+openssl req -new -key certs/server-key.pem \
+  -out certs/server-csr.pem \
+  -config certs/server-cert.cnf
+
+# Sign with your CA (valid 2 years)
+openssl x509 -req -days 730 \
+  -in certs/server-csr.pem \
+  -CA certs/ca-cert.pem -CAkey certs/ca-key.pem -CAcreateserial \
+  -out certs/server-cert.pem \
+  -extensions v3_req -extfile certs/server-cert.cnf
+```
+
+### 3. Verify
+
+```bash
+openssl verify -CAfile certs/ca-cert.pem certs/server-cert.pem
+# Expected: certs/server-cert.pem: OK
+
+openssl x509 -in certs/server-cert.pem -noout -dates
+```
+
+### 4. Trust the CA on clients
 
 ```bash
 # Linux
-sudo cp certs/ca-cert.pem /usr/local/share/ca-certificates/alejandria-veritran.crt
+sudo cp certs/ca-cert.pem /usr/local/share/ca-certificates/alejandria-ca.crt
 sudo update-ca-certificates
 
 # macOS
-sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain certs/ca-cert.pem
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain certs/ca-cert.pem
 ```
-
-**Ventaja:** Todos los programas confiarán automáticamente (curl, navegadores, etc.)
 
 ---
 
-### Opción B: Usar CA Cert Directamente
+## Option B: Let's Encrypt (public servers)
+
+Use [Certbot](https://certbot.eff.org/) or [Caddy's automatic HTTPS](https://caddyserver.com/docs/automatic-https) — no manual certificate management needed.
 
 ```bash
-# Copiar a directorio personal
-mkdir -p ~/.alejandria
-cp certs/ca-cert.pem ~/.alejandria/
-
-# Test manual con curl
-curl --cacert ~/.alejandria/ca-cert.pem \
-     -H 'X-API-Key: your-api-key-here' \
-     https://your-server.example.com/alejandria/health
-```
-
-**Ventaja:** No requiere permisos sudo
-
----
-
-## 🔄 Rotación de Certificados
-
-### Validez Actual
-
-```bash
-# Ver expiración del CA
-openssl x509 -in certs/ca-cert.pem -noout -enddate
-# Expira: Apr 9 01:24:25 2036 GMT (10 años)
-
-# Ver expiración del servidor
-openssl x509 -in certs/server-cert.pem -noout -enddate
-# Expira: Apr 11 01:24:27 2028 GMT (2 años)
-```
-
-### Cuándo Rotar
-
-| Certificado | Validez | Rotación Recomendada |
-|-------------|---------|---------------------|
-| CA Root | 10 años | Cada 5 años o si se compromete |
-| Server | 2 años | Cada 1 año (automatizable) |
-
-### Proceso de Rotación
-
-Ver `../docs/HTTP_SETUP.md` para el flujo actual de regeneración y despliegue de certificados.
-
----
-
-## 🧪 Validación
-
-### Verificar Integridad de Certificados
-
-```bash
-# Verificar que server-cert fue firmado por ca-cert
-openssl verify -CAfile certs/ca-cert.pem certs/server-cert.pem
-# Esperado: certs/server-cert.pem: OK
-
-# Ver detalles del CA cert
-openssl x509 -in certs/ca-cert.pem -text -noout | head -20
-
-# Ver Subject Alternative Names del servidor
-openssl x509 -in certs/server-cert.pem -text -noout | grep -A2 "Subject Alternative Name"
+# Example with Caddy (add to Caddyfile)
+your-server.example.com {
+    reverse_proxy localhost:8080
+}
+# Caddy automatically obtains and renews Let's Encrypt certificates
 ```
 
 ---
 
-## 🚨 Incident Response
+## Security Rules
 
-### Si `ca-key.pem` se compromete (CRÍTICO)
-
-1. **PÁNICO CONTROLADO** - Esto invalida toda la PKI
-2. Generar nuevo CA desde cero
-3. Re-firmar TODOS los certificados de servidores
-4. Distribuir nuevo `ca-cert.pem` a TODOS los clientes
-5. Investigar qué certificados maliciosos se generaron
-
-### Si `server-key.pem` se compromete (ALTO)
-
-1. Generar nuevo par de claves del servidor
-2. Firmar nuevo certificado con el CA existente
-3. Desplegar en Caddy (reload, sin downtime)
-4. Revocar certificado comprometido
+- ✅ **Commit**: `ca-cert.pem`, `server-cert.pem` (public certificates only)
+- ❌ **Never commit**: `*-key.pem`, `*.p12`, `*.pfx` (private keys)
+- The `.gitignore` in this repo already excludes `*-key.pem`
 
 ---
 
-## 📚 Referencias
+## See Also
 
-- [Guía HTTP/TLS actual](../docs/HTTP_SETUP.md)
-- [Guía de despliegue](../docs/DEPLOYMENT.md)
-- [OpenSSL CA Tutorial](https://jamielinux.com/docs/openssl-certificate-authority/)
-- [OWASP Transport Layer Protection](https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html)
-
----
-
-## ❓ FAQ
-
-**P: ¿Por qué usamos certificados autofirmados en vez de Let's Encrypt?**  
-R: Alejandría corre en red interna (no Internet público). Let's Encrypt requiere validación DNS pública. Certificados autofirmados son perfectos para intranets corporativas.
-
-**P: ¿Los navegadores mostrarán un warning?**  
-R: Solo si accedes con navegador web SIN instalar el CA cert. Los clientes MCP usan el trust store del sistema, donde instalamos `ca-cert.pem`.
-
-**P: ¿Podemos usar certificados de Veritran IT en vez de autofirmados?**  
-R: ¡SÍ! Si Veritran tiene una PKI corporativa, es ideal usar esos certificados. Reemplaza `ca-cert.pem` con el CA corporativo.
-
-**P: ¿Qué pasa si accidentalmente versioné una clave privada?**  
-R: 1) NO hagas push, 2) Borra del working tree, 3) `git reset HEAD <file>`, 4) Avisa a @appsec para rotar certificados.
-
----
-
-**Generado:** 11 Abril 2026  
-**Team:** Veritran AppSec  
-**Clasificación:** Pública (puede compartirse libremente)
+- [docs/HTTP_SETUP.md](../docs/HTTP_SETUP.md) — Full HTTP/TLS deployment guide
+- [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) — Production deployment patterns
