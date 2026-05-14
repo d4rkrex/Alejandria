@@ -29,9 +29,9 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-latest
 
     steps:
       - name: Checkout repository
@@ -63,7 +63,7 @@ jobs:
 
       - name: Build release binary
         run: |
-          cargo build --release --target ${{ matrix.target }} --features embeddings \
+          cargo build --release --target ${{ matrix.target }} \
             --package alejandria-cli --bin alejandria
 
       - name: Strip binary
