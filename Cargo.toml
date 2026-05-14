@@ -31,7 +31,7 @@ sqlite-vec = "0.1"
 
 # CLI dependencies
 clap = { version = "4.5", features = ["derive", "env"] }
-toml = "0.8"
+toml = "1.1"
 
 # Async (if needed later)
 tokio = { version = "1.40", features = ["full"] }
