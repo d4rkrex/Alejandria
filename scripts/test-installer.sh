@@ -8,7 +8,7 @@ echo
 
 # Test 1: Platform detection
 echo "Test 1: Platform Detection"
-if bash -c 'source scripts/install-mcp-v4.sh && detect_platform' >/dev/null 2>&1; then
+if bash -c 'source scripts/install.sh && detect_platform' >/dev/null 2>&1; then
     echo "✓ Platform detection works"
 else
     echo "✗ Platform detection failed"
@@ -17,7 +17,7 @@ fi
 
 # Test 2: Script syntax
 echo "Test 2: Script Syntax"
-if bash -n scripts/install-mcp-v4.sh; then
+if bash -n scripts/install.sh; then
     echo "✓ No syntax errors"
 else
     echo "✗ Syntax errors found"
@@ -66,7 +66,7 @@ REQUIRED_FUNCTIONS=(
 )
 
 for func in "${REQUIRED_FUNCTIONS[@]}"; do
-    if grep -q "^${func}()" scripts/install-mcp-v4.sh; then
+    if grep -q "^${func}()" scripts/install.sh; then
         echo "  ✓ $func defined"
     else
         echo "  ✗ $func missing"
@@ -84,7 +84,7 @@ SECURITY_PATTERNS=(
 )
 
 for pattern in "${SECURITY_PATTERNS[@]}"; do
-    if grep -q "$pattern" scripts/install-mcp-v4.sh; then
+    if grep -q "$pattern" scripts/install.sh; then
         echo "  ✓ Uses $pattern"
     else
         echo "  ⚠ Missing $pattern reference"
@@ -93,9 +93,9 @@ done
 
 # Test 6: Error handling patterns
 echo "Test 6: Error Handling"
-if grep -q "|| {" scripts/install-mcp-v4.sh && \
-   grep -q "return 1" scripts/install-mcp-v4.sh && \
-   grep -q "exit 1" scripts/install-mcp-v4.sh; then
+if grep -q "|| {" scripts/install.sh && \
+   grep -q "return 1" scripts/install.sh && \
+   grep -q "exit 1" scripts/install.sh; then
     echo "✓ Has error handling patterns"
 else
     echo "✗ Missing error handling"
@@ -162,13 +162,13 @@ echo "=== All Tests Passed ==="
 echo
 echo "Summary of deliverables:"
 echo "  • .github/workflows/release.yml - Cross-platform build workflow"
-echo "  • scripts/install-mcp-v4.sh - Intelligent installer"
+echo "  • scripts/install.sh - Intelligent installer"
 echo "  • QUICKSTART.md - Step-by-step guide"
 echo "  • README.md - Updated with 30-second quickstart"
 echo
 echo "Next steps:"
 echo "  1. Review changes: git diff"
-echo "  2. Test locally: export FORCE_BUILD=true && bash scripts/install-mcp-v4.sh"
+echo "  2. Test locally: export FORCE_BUILD=true && bash scripts/install.sh"
 echo "  3. Commit: git commit -am 'feat: pre-built binaries and installer v4'"
 echo "  4. Tag: git tag v1.6.0-installation-friction"
 echo "  5. Push: git push origin feat/prebuilt-binaries-installer --tags"

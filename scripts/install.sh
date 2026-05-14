@@ -3,8 +3,7 @@ set -euo pipefail
 
 # Alejandria Installer v5
 # Intelligent installer with auto-download, MCP client detection, auto-configuration, AND skill installation
-# Usage: curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install-mcp-v5.sh | bash
-# For private GitLab repos: GITLAB_TOKEN=your_token ./scripts/install-mcp-v5.sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash
 
 VERSION="${ALEJANDRIA_VERSION:-latest}"
 INSTALL_DIR="${ALEJANDRIA_INSTALL_DIR:-$HOME/.local/bin}"
@@ -13,17 +12,17 @@ AGENT_INSTRUCTIONS="${AGENT_INSTRUCTIONS:-$HOME/.config/opencode/AGENT_INSTRUCTI
 GITLAB_PROJECT="${GITLAB_PROJECT:-appsec/alejandria}"
 GITLAB_HOST="${GITLAB_HOST:-gitlab.veritran.net}"
 GITLAB_TOKEN="${GITLAB_TOKEN:-}"  # Optional: for private GitLab repos
-GITHUB_REPO="${GITHUB_REPO:-}"  # Fallback for public GitHub mirrors
+GITHUB_REPO="${GITHUB_REPO:-VeritranGH/Alejandria}"  # Public GitHub repository
 FORCE_BUILD="${FORCE_BUILD:-false}"
 KEEP_BUILD_CACHE="${KEEP_BUILD_CACHE:-false}"  # Set to true to preserve build artifacts
 INSTALL_SKILLS="${INSTALL_SKILLS:-true}"  # Set to false to skip skill installation
 INSTALL_DEV_SKILLS="${INSTALL_DEV_SKILLS:-false}"  # Set to true to also install development skills
 
-# Determine source (prefer GitLab for Veritran internal use)
-if [ -n "$GITHUB_REPO" ]; then
-    SOURCE_TYPE="github"
-else
+# Determine source (prefer GitHub public repo, fallback to GitLab for internal use)
+if [ -n "$GITLAB_TOKEN" ] && [ -z "${FORCE_GITHUB:-}" ]; then
     SOURCE_TYPE="gitlab"
+else
+    SOURCE_TYPE="github"
 fi
 
 # Colors for output

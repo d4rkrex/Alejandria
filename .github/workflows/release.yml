@@ -58,7 +58,7 @@ jobs:
             ### Installation
 
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install-mcp-v4.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
             ```
 
             ### Checksums
