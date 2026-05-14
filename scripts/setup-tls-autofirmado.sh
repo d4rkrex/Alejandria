@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script de Configuración TLS Autofirmado para Alejandría MCP
-# Autor: AppSec Team - Veritran
+# Author: Alejandria Contributors
 # Descripción: Genera certificados autofirmados y configura TLS en servidor + clientes
 
 set -e  # Exit on error
@@ -130,7 +130,7 @@ step1_generate_ca() {
     # Generar certificado raíz autofirmado
     log_info "  Generando certificado raíz del CA (válido $CA_VALIDITY_DAYS días)..."
     openssl req -new -x509 -days "$CA_VALIDITY_DAYS" -key "$CA_KEY" -out "$CA_CERT" \
-      -subj "/C=AR/ST=BuenosAires/L=CABA/O=Veritran/OU=AppSec/CN=Alejandria Internal CA" \
+      -subj "/C=US/ST=YourState/L=YourCity/O=YourOrg/OU=IT/CN=Alejandria Internal CA" \
       2>/dev/null
     
     # Verificar
@@ -184,7 +184,7 @@ prompt             = no
 C  = AR
 ST = BuenosAires
 L  = CABA
-O  = Veritran
+O  = YourOrg
 OU = AppSec
 CN = $SERVER_HOST
 
@@ -458,7 +458,7 @@ main() {
     echo ""
     echo "╔═══════════════════════════════════════════════════════════════╗"
     echo "║   Configuración TLS Autofirmado para Alejandría MCP          ║"
-    echo "║   Veritran AppSec Team                                        ║"
+    echo "║   Alejandria Contributors                                        ║"
     echo "╚═══════════════════════════════════════════════════════════════╝"
     echo ""
     

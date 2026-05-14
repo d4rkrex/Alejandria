@@ -3,16 +3,16 @@ set -euo pipefail
 
 # Alejandria Installer v5
 # Intelligent installer with auto-download, MCP client detection, auto-configuration, AND skill installation
-# Usage: curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/scripts/install.sh | bash
 
 VERSION="${ALEJANDRIA_VERSION:-latest}"
 INSTALL_DIR="${ALEJANDRIA_INSTALL_DIR:-$HOME/.local/bin}"
 SKILLS_DIR="${SKILLS_DIR:-$HOME/.config/opencode/skills}"
 AGENT_INSTRUCTIONS="${AGENT_INSTRUCTIONS:-$HOME/.config/opencode/AGENT_INSTRUCTIONS.md}"
 GITLAB_PROJECT="${GITLAB_PROJECT:-appsec/alejandria}"
-GITLAB_HOST="${GITLAB_HOST:-gitlab.veritran.net}"
+GITLAB_HOST="${GITLAB_HOST:-}"
 GITLAB_TOKEN="${GITLAB_TOKEN:-}"  # Optional: for private GitLab repos
-GITHUB_REPO="${GITHUB_REPO:-VeritranGH/Alejandria}"  # Public GitHub repository
+GITHUB_REPO="${GITHUB_REPO:-d4rkrex/Alejandria}"  # Public GitHub repository
 FORCE_BUILD="${FORCE_BUILD:-false}"
 KEEP_BUILD_CACHE="${KEEP_BUILD_CACHE:-false}"  # Set to true to preserve build artifacts
 INSTALL_SKILLS="${INSTALL_SKILLS:-true}"  # Set to false to skip skill installation

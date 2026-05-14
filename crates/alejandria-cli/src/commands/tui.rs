@@ -3339,7 +3339,7 @@ fn render_help_tab(f: &mut Frame, app: &AppState, area: Rect) {
             Style::default().fg(Color::DarkGray),
         )]),
         Line::from(vec![Span::styled(
-            " Made with ❤️  by AppSec Team | https://gitlab.veritran.net/appsec/alejandria ",
+            " Made with ❤️  by AppSec Team | https://github.com/d4rkrex/Alejandria ",
             Style::default().fg(Color::DarkGray),
         )]),
     ];

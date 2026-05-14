@@ -5,7 +5,7 @@ Get Alejandria running in under 2 minutes with pre-built binaries.
 ## One-Line Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/scripts/install.sh | bash
 ```
 
 That's it! The installer will:
@@ -79,21 +79,21 @@ Replace `/home/YOUR_USER` with your actual home directory path.
 
 ```bash
 export ALEJANDRIA_INSTALL_DIR="$HOME/bin"
-curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/scripts/install.sh | bash
 ```
 
 ### Specific Version
 
 ```bash
 export ALEJANDRIA_VERSION="v1.6.0"
-curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/scripts/install.sh | bash
 ```
 
 ### Force Build from Source
 
 ```bash
 export FORCE_BUILD=true
-curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/scripts/install.sh | bash
 ```
 
 ## Testing MCP Integration
@@ -193,14 +193,14 @@ If auto-download fails, the installer automatically falls back to building from 
 - Git
 - 10-20 minutes for compilation
 
-Or download manually from [GitHub Releases](https://github.com/VeritranGH/Alejandria/releases):
+Or download manually from [GitHub Releases](https://github.com/d4rkrex/Alejandria/releases):
 
 ```bash
 # Download for your platform (example for Linux x86_64)
-curl -LO https://github.com/VeritranGH/Alejandria/releases/download/v1.9.6/alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/d4rkrex/Alejandria/releases/download/v1.9.6/alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz
 
 # Verify checksum
-curl -LO https://github.com/VeritranGH/Alejandria/releases/download/v1.9.6/alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz.sha256
+curl -LO https://github.com/d4rkrex/Alejandria/releases/download/v1.9.6/alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz.sha256
 sha256sum -c alejandria-v1.9.6-x86_64-unknown-linux-gnu.tar.gz.sha256
 
 # Extract and install
@@ -215,7 +215,7 @@ chmod +x ~/.local/bin/alejandria
 Run the installer again - it will replace the old binary:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/scripts/install.sh | bash
 ```
 
 Your config and database are preserved.

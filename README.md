@@ -2,7 +2,7 @@
 
 > Persistent memory system for AI agents combining sophisticated dual-memory architecture with agent-centric workflows
 
-[![GitHub Actions](https://github.com/VeritranGH/Alejandria/actions/workflows/ci.yml/badge.svg)](https://github.com/VeritranGH/Alejandria/actions)
+[![GitHub Actions](https://github.com/d4rkrex/Alejandria/actions/workflows/ci.yml/badge.svg)](https://github.com/d4rkrex/Alejandria/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Overview
@@ -43,7 +43,7 @@ Get started in under 2 minutes with pre-built binaries:
 
 ```bash
 # One-line installation (installs MCP server + skills)
-curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/scripts/install.sh | bash
 ```
 
 The installer automatically:
@@ -62,7 +62,7 @@ If you prefer building from source or need a custom configuration:
 
 ```bash
 # Clone the repository
-git clone https://github.com/VeritranGH/Alejandria.git
+git clone https://github.com/d4rkrex/Alejandria.git
 cd alejandria
 
 # Build and install CLI
@@ -334,7 +334,7 @@ Create `~/.config/opencode/AGENT_INSTRUCTIONS.md`:
 
 ```bash
 mkdir -p ~/.config/opencode
-curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/docs/AGENT_INSTRUCTIONS.md \
+curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/docs/AGENT_INSTRUCTIONS.md \
   -o ~/.config/opencode/AGENT_INSTRUCTIONS.md
 ```
 

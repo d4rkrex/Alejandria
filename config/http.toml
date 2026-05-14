@@ -58,7 +58,7 @@ allowed_origins = []
 # For production, use strong random keys:
 # openssl rand -base64 32
 api_keys = [
-    { name = "veritran-appsec", key = "your-api-key-here" },
+    { name = "alejandria-user", key = "your-api-key-here" },
 ]
 
 [database]

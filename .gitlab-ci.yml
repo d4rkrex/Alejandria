@@ -161,7 +161,7 @@ create_release:
       ### Installation
 
       \`\`\`bash
-      curl -fsSL https://gitlab.veritran.net/appsec/alejandria/-/raw/main/scripts/install.sh | bash
+      curl -fsSL https://raw.githubusercontent.com/d4rkrex/Alejandria/main/scripts/install.sh | bash
       \`\`\`
 
       ### Checksums
