@@ -230,5 +230,5 @@ fi
 if [ "$KEEP_DATA" = true ]; then
     echo ""
     log_info "To reinstall Alejandria with preserved data:"
-    echo "  curl -fsSL https://raw.githubusercontent.com/mroldan/alejandria/main/scripts/install-mcp-v4.sh | bash"
+    echo "  curl -fsSL https://raw.githubusercontent.com/VeritranGH/Alejandria/main/scripts/install.sh | bash"
 fi
