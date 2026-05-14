@@ -26,7 +26,7 @@ ulid = "1.1"
 thiserror = "1.0"
 
 # Storage dependencies
-rusqlite = { version = "0.34", features = ["bundled", "modern_sqlite"] }
+rusqlite = { version = "0.39", features = ["bundled", "modern_sqlite"] }
 sqlite-vec = "0.1"
 
 # CLI dependencies

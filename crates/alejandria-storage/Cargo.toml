@@ -13,7 +13,7 @@ alejandria-core = { path = "../alejandria-core" }
 
 # SQLite with modern features
 # SQLCipher encryption can be enabled with encryption feature
-rusqlite = { version = "0.34", features = ["bundled", "modern_sqlite"] }
+rusqlite = { version = "0.39", features = ["bundled", "modern_sqlite"] }
 
 # Vector search extension for embeddings
 sqlite-vec = "0.1"
