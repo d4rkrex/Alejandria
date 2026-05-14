@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_case_insensitive_matching() {
-        let strategy = ContextSensitiveDecay;
+        let _strategy = ContextSensitiveDecay;
         let multipliers = ContextSensitiveDecay::default_topic_multipliers();
 
         // Should match regardless of case
