@@ -73,21 +73,25 @@ get_cargo_version() {
     local cargo_toml="$repo_dir/Cargo.toml"
     
     if [ -f "$cargo_toml" ]; then
-        # Extract version from [workspace.package] section
-        grep -A 10 '^\[workspace\.package\]' "$cargo_toml" | grep '^version' | head -1 | sed -E 's/version\s*=\s*"([^"]+)".*/\1/'
+        # Extract version from [workspace.package] section (portable sed, no \s)
+        grep -A 10 '^\[workspace\.package\]' "$cargo_toml" | grep '^version' | head -1 | sed -E 's/version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/'
     fi
 }
 
 # Get latest release version from GitLab or GitHub
 get_latest_version() {
     local api_url
-    
+
     # First, try to get version from local Cargo.toml if we're in the repo
     if [ -f "Cargo.toml" ]; then
         local cargo_version
         cargo_version=$(get_cargo_version ".")
         if [ -n "$cargo_version" ]; then
-            echo "$cargo_version"
+            # Ensure v-prefix for consistency with release tags
+            case "$cargo_version" in
+                v*) echo "$cargo_version" ;;
+                *)  echo "v${cargo_version}" ;;
+            esac
             return 0
         fi
     fi
@@ -298,6 +302,11 @@ download_from_gitlab_api() {
 download_binary() {
     local version=$1
     local target=$2
+    # Normalize version: ensure v-prefix for GitHub release tags
+    case "$version" in
+        v*) : ;;
+        *)  version="v${version}" ;;
+    esac
     local archive_name="alejandria-${version}-${target}.tar.gz"
     local download_url
     local checksum_url

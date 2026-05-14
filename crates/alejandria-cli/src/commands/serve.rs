@@ -1,5 +1,5 @@
 use alejandria_mcp::server::run_stdio_server;
-// use alejandria_mcp::Transport; // Unused - keeping for future use
+use alejandria_mcp::Transport;
 use alejandria_storage::SqliteStore;
 use anyhow::{Context, Result};
 use std::env;

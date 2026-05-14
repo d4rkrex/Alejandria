@@ -937,7 +937,7 @@ impl SqliteStore {
                     bm25(fts.memories_fts, 1.0, 0.5) as score
                 FROM memories_fts fts
                 INNER JOIN memories m ON fts.rowid = m.rowid
-                WHERE fts.memories_fts MATCH ?1 
+                WHERE fts.memories_fts MATCH ?1
                   AND m.deleted_at IS NULL
                   AND (m.owner_key_hash = ?2 OR m.owner_key_hash = 'SHARED' OR m.owner_key_hash = 'LEGACY_SYSTEM')
                 ORDER BY score ASC
@@ -1955,13 +1955,13 @@ impl MemoryStore for SqliteStore {
 
             // Fetch all non-deleted memories with full context for decay strategies
             let mut stmt = conn.prepare(
-                "SELECT 
+                "SELECT
                     id, created_at, updated_at, last_accessed, access_count, weight,
                     topic, summary, raw_excerpt, keywords,
                     importance, source, related_ids,
                     topic_key, revision_count, duplicate_count, last_seen_at, deleted_at,
                     decay_profile, decay_params, owner_key_hash
-                FROM memories 
+                FROM memories
                 WHERE deleted_at IS NULL"
             ).into_icm_result()?;
 
@@ -2028,7 +2028,7 @@ impl MemoryStore for SqliteStore {
 
                 // Select appropriate decay strategy based on profile
                 let strategy = Self::select_decay_strategy(memory.decay_profile.as_deref());
-                
+
                 // Get current params or use strategy defaults
                 let params = memory.decay_params.clone()
                     .unwrap_or_else(|| strategy.default_params());
@@ -2534,7 +2534,7 @@ impl MemoryStore for SqliteStore {
                 .transpose()?;
 
             conn.execute(
-                "UPDATE memories 
+                "UPDATE memories
                  SET decay_profile = ?1, decay_params = ?2, updated_at = ?3
                  WHERE id = ?4 AND deleted_at IS NULL",
                 rusqlite::params![
@@ -2555,7 +2555,7 @@ impl MemoryStore for SqliteStore {
             // Count memories with explicit decay profiles
             let total_with_profile: usize = conn
                 .query_row(
-                    "SELECT COUNT(*) FROM memories 
+                    "SELECT COUNT(*) FROM memories
                      WHERE deleted_at IS NULL AND decay_profile IS NOT NULL",
                     [],
                     |row| row.get(0),
@@ -2565,7 +2565,7 @@ impl MemoryStore for SqliteStore {
             // Count memories using default decay (NULL profile)
             let total_default: usize = conn
                 .query_row(
-                    "SELECT COUNT(*) FROM memories 
+                    "SELECT COUNT(*) FROM memories
                      WHERE deleted_at IS NULL AND decay_profile IS NULL",
                     [],
                     |row| row.get(0),
@@ -2604,7 +2604,7 @@ impl MemoryStore for SqliteStore {
             // Count memories with low weight (< 0.1)
             let low_weight_count: usize = conn
                 .query_row(
-                    "SELECT COUNT(*) FROM memories 
+                    "SELECT COUNT(*) FROM memories
                      WHERE deleted_at IS NULL AND weight < 0.1",
                     [],
                     |row| row.get(0),
@@ -2776,28 +2776,28 @@ mod tests {
                  VALUES ('mem1', ?1, ?1, ?1, 5, 1.0, 'test', 'Exponential memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem1', 1, 0, ?1, NULL, NULL, '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             // Memory with spaced repetition
             conn.execute(
                 "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
                  VALUES ('mem2', ?1, ?1, ?1, 3, 1.0, 'test', 'SM-2 memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem2', 1, 0, ?1, NULL, 'spaced-repetition', '{\"interval_days\":1.0,\"easiness_factor\":2.5}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             // Memory with importance-weighted decay
             conn.execute(
                 "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
                  VALUES ('mem3', ?1, ?1, ?1, 8, 1.0, 'test', 'Importance memory', 'excerpt', '[]', 'high', '\"User\"', '[]', 'test/mem3', 1, 0, ?1, NULL, 'importance-weighted', '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             // Memory with context-sensitive decay
             conn.execute(
                 "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
                  VALUES ('mem4', ?1, ?1, ?1, 2, 1.0, 'architecture', 'Architecture memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem4', 1, 0, ?1, NULL, 'context-sensitive', '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             Ok::<(), IcmError>(())
         }).unwrap();
 
@@ -2851,14 +2851,14 @@ mod tests {
                  VALUES ('mem_null', ?1, ?1, ?1, 3, 1.0, 'test', 'Legacy memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_null', 1, 0, ?1, NULL, NULL, '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             // Insert memory with empty string profile
             conn.execute(
                 "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
                  VALUES ('mem_empty', ?1, ?1, ?1, 3, 1.0, 'test', 'Empty profile memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_empty', 1, 0, ?1, NULL, '', '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             Ok::<(), IcmError>(())
         }).unwrap();
 
@@ -2898,14 +2898,14 @@ mod tests {
                  VALUES ('mem_crit', ?1, ?1, ?1, 1, 1.0, 'test', 'Critical memory', 'excerpt', '[]', 'critical', '\"User\"', '[]', 'test/mem_crit', 1, 0, ?1, NULL, NULL, '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             // Insert medium memory for comparison
             conn.execute(
                 "INSERT INTO memories (id, created_at, updated_at, last_accessed, access_count, weight, topic, summary, raw_excerpt, keywords, importance, source, related_ids, topic_key, revision_count, duplicate_count, last_seen_at, deleted_at, decay_profile, decay_params, owner_key_hash)
                  VALUES ('mem_med', ?1, ?1, ?1, 1, 1.0, 'test', 'Medium memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_med', 1, 0, ?1, NULL, NULL, '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             Ok::<(), IcmError>(())
         }).unwrap();
 
@@ -2958,7 +2958,7 @@ mod tests {
                  VALUES ('mem_sm2', ?1, ?1, ?1, 5, 1.0, 'test', 'SM-2 memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_sm2', 1, 0, ?1, NULL, 'spaced-repetition', '{\"interval_days\":1.0,\"easiness_factor\":2.5,\"repetitions\":0}', 'LEGACY_SYSTEM')",
                 rusqlite::params![review_time]
             ).into_icm_result()?;
-            
+
             Ok::<(), IcmError>(())
         }).unwrap();
 
@@ -3012,7 +3012,7 @@ mod tests {
                  VALUES ('mem_unknown', ?1, ?1, ?1, 3, 1.0, 'test', 'Unknown profile memory', 'excerpt', '[]', 'medium', '\"User\"', '[]', 'test/mem_unknown', 1, 0, ?1, NULL, 'totally-fake-strategy', '{}', 'LEGACY_SYSTEM')",
                 rusqlite::params![old_time]
             ).into_icm_result()?;
-            
+
             Ok::<(), IcmError>(())
         }).unwrap();
 
