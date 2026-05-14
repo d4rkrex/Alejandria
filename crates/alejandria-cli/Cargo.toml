@@ -35,7 +35,7 @@ uuid = { version = "1.11", features = ["v4"] }
 regex = "1.10"
 
 # TUI dependencies
-ratatui = "0.26"
+ratatui = "0.30"
 crossterm = "0.27"
 
 # Security dependencies for backup operations
