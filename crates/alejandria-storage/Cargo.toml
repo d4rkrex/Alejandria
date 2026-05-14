@@ -32,7 +32,7 @@ serde_json = "1.0"
 thiserror = "1.0"
 
 # SHA-256 hashing for deduplication
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Hex encoding for encryption keys
 hex = "0.4"
